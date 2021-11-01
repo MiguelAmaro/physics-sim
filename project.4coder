@@ -1,0 +1,63 @@
+version(2);
+
+project_name =  "Physics Sim";
+
+patterns = {
+    "*.cpp",
+    "*.ino",
+    "*.h",
+    "*.bat",
+    "*.sh",
+    "*.4coder",
+};
+
+blacklist_patterns =
+{
+    ".*",
+};
+
+load_paths = 
+{
+    .win = 
+    { 
+        { .path =   ".", .recursive = false, .relative = true },
+        { .path = "src", .recursive =  true, .relative = true },
+    },
+	
+};
+
+commands =
+{
+    .build =
+    {
+		.win              = "build.bat",
+        .out              = "*compilation*",
+		.footer_panel     = true, 
+		.save_dirty_files = true, 
+		.cursor_at_end    = false,
+	},
+    
+    .run =
+    {
+		.win              = "run.bat",
+		.footer_panel     = false, 
+		.save_dirty_files = true, 
+		.cursor_at_end    = false,
+	},
+    
+    .debug =
+    {
+        .win              = "debug.bat",
+        .footer_panel     = false, 
+		.save_dirty_files = false, 
+		.cursor_at_end    = false,
+	},
+};
+
+fkey_command = 
+{
+    .F1  = "build",
+    
+    .F12 = "run",
+    .F11 = "debug",
+};
