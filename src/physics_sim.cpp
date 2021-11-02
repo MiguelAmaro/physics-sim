@@ -6,6 +6,8 @@
 #include <stdint.h>
 
 #include <d3d11.h>
+#include <d3dcompiler.h>
+//#include <d3dx11.h>
 //#include <d3d9.h>
 //#include <DxErr.h>
 //#include <D3dx9math.h>
@@ -43,6 +45,11 @@ struct app_state
     IDXGISwapChain         *SwapChain;
     D3D_FEATURE_LEVEL       FeatureLevel;
     ID3D11RenderTargetView *RenderTarget;
+    
+    ID3D11VertexShader *VertexShader;
+    ID3D11PixelShader  *PixelShader;
+    ID3D11InputLayout  *InputLayout;
+    ID3D11Buffer       *VertexBuffer;
 };
 
 struct vertex
@@ -431,8 +438,8 @@ Update(app_state *AppState)
     UINT CurrentTime = timeGetTime() % 1000;
     FLOAT RotationAngle = CurrentTime * (2.0f * D3DX_PI) / 1000.0f;
     D3DXMatrixRotationZ(&WorldMatrix, RotationAngle);
-    AppState->RenderDevice->SetTransform(D3DTS_WORLD, &WorldMatrix);
     
+    AppState->RenderDevice->SetTransform(D3DTS_WORLD, &WorldMatrix);
     D3DXVECTOR3 EyePoint(0.0f, 3.0f, -5.0f);
     D3DXVECTOR3 LookAtPoint(0.0f, 0.0f, 0.0f);
     D3DXVECTOR3 UpDirection(0.0f, 1.0f, 0.0f);
@@ -456,27 +463,27 @@ Update(app_state *AppState)
 void
 Render(app_state *AppState)
 {
-    v4f32 color = v4f32Init(0.20f, 0.20f, 0.25f, 1.0f);
-    
-    AppState->Context->ClearRenderTargetView(AppState->RenderTarget, color.e);
-    
-    AppState->SwapChain->Present(0 , 0);
-    
-#if 0
-    AppState->RenderDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 1, 0), 1.0f, 0);
-    
-    AppState->RenderDevice->SetStreamSource(0, AppState->VertexBuffer, 0, sizeof(vertex));
-    AppState->RenderDevice->SetFVF(VERTEX_TYPE_SPECIFIER);
-    
-    if(SUCCEEDED(AppState->RenderDevice->BeginScene()))
+    if(AppState->Context)
     {
-        AppState->RenderDevice->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 1);
-        AppState->RenderDevice->EndScene();
+        v4f32 ClearColor = v4f32Init(0.20f, 0.20f, 0.25f, 1.0f);
         
+        AppState->Context->ClearRenderTargetView(AppState->RenderTarget, ClearColor.e);
+        
+        u32 Stride = sizeof(v3f32);
+        u32 Offset = 0;
+        
+        AppState->Context->IASetInputLayout(AppState->InputLayout);
+        AppState->Context->IASetVertexBuffers(0, 1, &AppState->VertexBuffer, &Stride, &Offset);
+        AppState->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        
+        AppState->Context->VSSetShader(AppState->VertexShader, 0, 0);
+        AppState->Context->PSSetShader(AppState->PixelShader , 0, 0);
+        
+        AppState->Context->Draw(3, 0);
+        
+        AppState->SwapChain->Present(0 , 0);
     }
     
-    //AppState->RenderDevice->Present(0,0,0,0);
-#endif
     return;
 }
 
@@ -492,39 +499,164 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
     
     
     {
-        vertex Verts[] =
-        {
-            {v3f32Init(-1.0f, -1.0f, 0.0f), 0xFFff0000 },
-            {v3f32Init( 1.0f, -1.0f, 0.0f), 0xFF0000ff },
-            {v3f32Init( 0.0f,  1.0f, 0.0f), 0xFFffffff },
-        };
+        HRESULT Result;
+        
 #if 0
-        LPDIRECT3DVERTEXBUFFER9 BufferPointer = 0;
+        u32 VerticesSize = sizeof(vertex) * 3;
         
-        if(FAILED(AppState->RenderDevice->CreateVertexBuffer(3 * sizeof(vertex),
-                                                             0, VERTEX_TYPE_SPECIFIER,
-                                                             D3DPOOL_DEFAULT, &BufferPointer, 0)))
+        vertex Vertices[] =
         {
-            ASSERT(g_Running = false);
-        }
-        else
+            {v3f32Init( 0.5f,  0.5f, 0.5f), 0xFFff0000 },
+            {v3f32Init( 0.5f, -0.5f, 0.5f), 0xFF0000ff },
+            {v3f32Init(-0.5f, -0.5f, 0.5f), 0xFFffffff },
+            
+        };
+#else
+        u32 VerticesSize = sizeof(v3f32) * 3;
+        
+        v3f32 Vertices[] =
         {
-            AppState->VertexBuffer = BufferPointer;
-        }
-        
-        VOID *TempBuffer;
-        
-        if(FAILED(AppState->VertexBuffer->Lock(0,
-                                               3 * sizeof(vertex),
-                                               (void **)&TempBuffer, 0)))
-        {
-            ASSERT(g_Running = false);
-        }
-        
-        memcpy(TempBuffer, Verts, 3 * sizeof(vertex));
-        
-        AppState->VertexBuffer->Unlock();
+            {v3f32Init( 0.5f,  0.5f, 0.5f)},
+            {v3f32Init( 0.5f, -0.5f, 0.5f)},
+            {v3f32Init(-0.5f, -0.5f, 0.5f)},
+        };
 #endif
+        
+        D3D11_BUFFER_DESC VertexDescriptor = { 0 };
+        
+        VertexDescriptor.Usage     = D3D11_USAGE_DEFAULT;
+        VertexDescriptor.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        VertexDescriptor.ByteWidth = VerticesSize;
+        
+        D3D11_SUBRESOURCE_DATA ResourceData = { 0 };
+        ResourceData.pSysMem = Vertices;
+        
+        ID3D11Buffer* VertexBuffer;
+        Result = AppState->Device->CreateBuffer(&VertexDescriptor,
+                                                &ResourceData,
+                                                &VertexBuffer );
+        ASSERT(!FAILED(Result));
+        
+        /// CREATE VERTEX SHADER
+        ID3DBlob *VertexShaderBuffer;
+        
+        DWORD ShaderFlags =  D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_DEBUG;
+        
+        ID3DBlob *ErrorBuffer;
+        
+        // NOTE(MIGUEL): D3DX11CompileFromFile is depricated
+        HANDLE ShaderCodeHandle;
+        u8     ShaderCode[1024];
+        
+        ShaderCodeHandle = CreateFileA("..\\sampleshader.fx",
+                                       GENERIC_READ, 0, 0,
+                                       OPEN_EXISTING,
+                                       FILE_ATTRIBUTE_NORMAL,
+                                       0);
+        
+        ReadFile(ShaderCodeHandle, &ShaderCode, 1024, 0, 0);
+        CloseHandle(ShaderCodeHandle);
+        
+        Result = D3DCompile(ShaderCode,
+                            1024,
+                            0,
+                            0, 0,
+                            "VS_Main",
+                            "vs_4_0",
+                            ShaderFlags,
+                            0,
+                            &VertexShaderBuffer,
+                            &ErrorBuffer);
+        
+        if(FAILED(Result))
+        {
+            OutputDebugString((LPCSTR)ErrorBuffer->GetBufferPointer());
+            
+            if(ErrorBuffer != 0)
+            {
+                ErrorBuffer->Release();
+                ASSERT(0);
+            }
+        }
+        
+        Result = AppState->Device->CreateVertexShader(VertexShaderBuffer->GetBufferPointer(),
+                                                      VertexShaderBuffer->GetBufferSize(), 0,
+                                                      &AppState->VertexShader);
+        
+        if(FAILED(Result))
+        {
+            if(VertexShaderBuffer) VertexShaderBuffer->Release();
+            
+            ASSERT(0);
+        }
+        
+        /// SET INPUT LAYOUT
+        D3D11_INPUT_ELEMENT_DESC VertexLayout[1];
+        
+        VertexLayout[0].SemanticName         = "POSITION";
+        VertexLayout[0].SemanticIndex        = 0;
+        VertexLayout[0].Format               = DXGI_FORMAT_R32G32B32_FLOAT;
+        VertexLayout[0].InputSlot            = 0;
+        VertexLayout[0].AlignedByteOffset    = 0;
+        VertexLayout[0].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
+        VertexLayout[0].InstanceDataStepRate = 0;
+#if 0
+        VertexLayout[1].SemanticName         = "COLOR";
+        VertexLayout[1].SemanticIndex        = 0;
+        VertexLayout[1].Format               = DXGI_FORMAT_R8G8B8A8_UNORM;
+        VertexLayout[1].InputSlot            = 0;
+        VertexLayout[1].AlignedByteOffset    = 0;
+        VertexLayout[1].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
+        VertexLayout[1].InstanceDataStepRate = 0;
+#endif
+        u32 TotalLayoutElements = ARRAYSIZE(VertexLayout);
+        
+        Result = AppState->Device->CreateInputLayout(VertexLayout,
+                                                     TotalLayoutElements,
+                                                     VertexShaderBuffer->GetBufferPointer(),
+                                                     VertexShaderBuffer->GetBufferSize(),
+                                                     &AppState->InputLayout);
+        
+        if(VertexShaderBuffer) VertexShaderBuffer->Release();
+        
+        /// CREATE PIXEL SHADER
+        
+        ID3DBlob* PixelShaderBuffer = 0;
+        //ID3DBlob* ErrorBuffer = 0;
+        
+        // NOTE(MIGUEL): Already read shader file so should be in ShaderCode buffer 
+        
+        Result = D3DCompile(ShaderCode,
+                            1024,
+                            0,
+                            0, 0,
+                            "PS_Main",
+                            "ps_4_0",
+                            ShaderFlags,
+                            0,
+                            &PixelShaderBuffer,
+                            &ErrorBuffer);
+        
+        if(FAILED(Result))
+        {
+            if(ErrorBuffer != 0)
+            {
+                ErrorBuffer->Release();
+                ASSERT(0);
+            }
+        }
+        
+        Result = AppState->Device->CreatePixelShader(PixelShaderBuffer->GetBufferPointer(),
+                                                     PixelShaderBuffer->GetBufferSize(), 0,
+                                                     &AppState->PixelShader);
+        
+        
+        if(PixelShaderBuffer) PixelShaderBuffer->Release();
+        
+        if(FAILED(Result))
+        {
+            ASSERT(0);
+        }
     }
     
     b32 g_Pause = 0;

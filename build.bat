@@ -10,7 +10,7 @@ F:\Dev\PhysicsSim\src\%PROJECT_NAME%.cpp
 
 rem BUILD TOOLS
 rem ************************************************************
-set D3D9_DIR=F:\Dev_Tools\DirectXSDKLegacy
+set D3D_DIR=F:\Dev_Tools\DirectXSDKLegacy
 
 
 rem ************************************************************
@@ -31,8 +31,7 @@ set MSVC_FLAGS= ^
 -Gs9999999
 
 set MSVC_SEARCH_DIRS=
-
-rem -I%D3D9_DIR%\Include\
+rem -I%D3D_DIR%\Include\
 
 rem ************************************************************
 rem LINKER(MSVC) OPTIONS
@@ -45,12 +44,13 @@ kernel32.lib ^
 gdi32.lib ^
 dinput8.lib ^
 dxguid.lib ^
-%D3D9_DIR%\Lib\x64\d3dx11.lib ^
-%D3D9_DIR%\Lib\x64\d3d11.lib ^
-%D3D9_DIR%\Lib\x64\dxerr.lib ^
+%D3D_DIR%\Lib\x64\d3d11.lib ^
+%D3D_DIR%\Lib\x64\dxerr.lib ^
+%D3D_DIR%\Lib\x64\d3dcompiler.lib ^
 winmm.lib ^
 ws2_32.lib 
 
+rem %D3D_DIR%\Lib\x64\d3dx11.lib <- Utility Library is deprecated.
 
 set MSVC_LINK_FLAGS= ^
 -nodefaultlib ^
