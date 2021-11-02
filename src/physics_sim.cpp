@@ -531,10 +531,10 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         D3D11_SUBRESOURCE_DATA ResourceData = { 0 };
         ResourceData.pSysMem = Vertices;
         
-        ID3D11Buffer* VertexBuffer;
+        //ID3D11Buffer* VertexBuffer;
         Result = AppState->Device->CreateBuffer(&VertexDescriptor,
                                                 &ResourceData,
-                                                &VertexBuffer );
+                                                &AppState->VertexBuffer );
         ASSERT(!FAILED(Result));
         
         /// CREATE VERTEX SHADER
@@ -546,7 +546,7 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         
         // NOTE(MIGUEL): D3DX11CompileFromFile is depricated
         HANDLE ShaderCodeHandle;
-        u8     ShaderCode[1024];
+        u8     ShaderCode[1024] = { 0 };
         
         ShaderCodeHandle = CreateFileA("..\\sampleshader.fx",
                                        GENERIC_READ, 0, 0,
@@ -591,7 +591,7 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         }
         
         /// SET INPUT LAYOUT
-        D3D11_INPUT_ELEMENT_DESC VertexLayout[1];
+        D3D11_INPUT_ELEMENT_DESC VertexLayout[1] = { 0 };
         
         VertexLayout[0].SemanticName         = "POSITION";
         VertexLayout[0].SemanticIndex        = 0;
