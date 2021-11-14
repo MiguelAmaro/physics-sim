@@ -1,7 +1,7 @@
 /* date = September 20th 2021 7:46 pm */
 
-#ifndef ACC_ARDUINO_MATH_H
-#define ACC_ARDUINO_MATH_H
+#ifndef PHYSICS_SIM_MATH_H
+#define PHYSICS_SIM_MATH_H
 
 #include "physics_sim_types.h"
 #include "thirdparty\sse_mathisfun.h"
@@ -40,6 +40,17 @@ f32 Square(f32 Value)
     return Result;
 };
 
+f32 Root(f32 Value)
+{
+    f32 Result = 0.0f;
+    
+    __m128 Shit = _mm_sqrt_ss(_mm_load_ss(&Value));
+    
+    _mm_store_ss(&Result, Shit);
+    
+    return Result;
+}
+
 
 //- VECTORS 
 
@@ -76,6 +87,11 @@ union v3f32
         f32 r;
         f32 g;
         f32 b;
+    };
+    struct
+    {
+        v2f32 xy;
+        f32    z;
     };
     f32 c[3];
 };
@@ -123,8 +139,6 @@ union rect_v2s32
 
 
 //- MATRICES 
-// NOTE(MIGUEL): What is row & column major and do i care?
-//https://en.wikipedia.org/wiki/Row-_and_column-major_order
 
 union m2f32
 {
@@ -162,7 +176,6 @@ v2f32 v2f32Init(f32 x, f32 y)
     
     return Result;
 }
-
 
 
 //- VECTOR 3D 
@@ -210,24 +223,24 @@ v3f32 operator +(v3f32 A, v3f32 B)
 
 void operator +=(v3f32 &A, v3f32 B)
 {
-    v3f32 Result = A;
+    v3f32 *Result = &A;
     
-    Result.x = A.x + B.x;
-    Result.y = A.y + B.y;
-    Result.z = A.z + B.z;
+    Result->x = A.x + B.x;
+    Result->y = A.y + B.y;
+    Result->z = A.z + B.z;
     
     return;
 }
 
-v3f32 operator *=(v3f32 &A, f32 Scalar)
+void operator *=(v3f32 &A, f32 Scalar)
 {
-    v3f32 Result = A;
+    v3f32 *Result = &A;
     
-    Result.x = A.x * Scalar;
-    Result.y = A.y * Scalar;
-    Result.z = A.z * Scalar;
+    Result->x = A.x * Scalar;
+    Result->y = A.y * Scalar;
+    Result->z = A.z * Scalar;
     
-    return Result;
+    return;
 }
 
 b32 operator ==(v3f32 A, v3f32 B)
@@ -237,6 +250,17 @@ b32 operator ==(v3f32 A, v3f32 B)
     
     while((Result = (A.c[Index] == B.c[Index])) &&
           (Index++ < (3 - 1)));
+    
+    return Result;
+}
+
+f32 v3f32Inner(v3f32 A, v3f32 B)
+{
+    f32 Result = 0.0f;
+    
+    Result = (A.x * B.x +
+              A.y * B.y +
+              A.z * B.z);
     
     return Result;
 }
@@ -254,6 +278,31 @@ v4f32 v4f32Init(f32 x, f32 y, f32 z, f32 w)
     return Result;
 }
 
+//- RECTANGLE 2D 
+
+b32 rect_v2f32IsOutside(rect_v2f32 Bounds, v2f32 Pos)
+{
+    b32 Result = 1;
+    
+    Result = (Bounds.min.x > Pos.x ||
+              Bounds.min.y > Pos.y ||
+              Bounds.max.x < Pos.x ||
+              Bounds.max.y < Pos.y);
+    
+    return Result;
+}
+
+rect_v2f32 rect_v2f32CenteredDim(v2f32 Dim)
+{
+    rect_v2f32 Result = { 0 };
+    
+    Result.min.x = -1.0f * Dim.x / 2.0f;
+    Result.min.y = -1.0f * Dim.y / 2.0f;
+    Result.max.x = Dim.x / 2.0f;
+    Result.max.y = Dim.y / 2.0f;
+    
+    return Result;
+}
 
 //- MATRIX 2D 
 static void
@@ -446,9 +495,6 @@ m4f32Viewport(v2f32 WindowDim)
     return Result;
 }
 
-// https://docs.microsoft.com/en-us/windows/win32/direct3d9/d3dxmatrixorthorh?redirectedfrom=MSDN
-// https://blog.demofox.org/2017/03/31/orthogonal-projection-matrix-plainly-explained/
-// https://docs.microsoft.com/en-us/windows/win32/direct3d9/d3dxmatrixorthooffcenterrh
 static m4f32
 m4f32Orthographic(f32 LeftPlane,
                   f32 RightPlane,
@@ -492,4 +538,4 @@ m4f32Orthographic(f32 LeftPlane,
     return Result;
 }
 
-#endif //ACC_ARDUINO_MATH_H
+#endif // PHYSICS_SIM_MATH_H

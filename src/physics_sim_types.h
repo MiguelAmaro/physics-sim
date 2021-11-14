@@ -1,7 +1,7 @@
 /* date = September 20th 2021 7:46 pm */
 
-#ifndef ACC_ARDUINO_TYPES_H
-#define ACC_ARDUINO_TYPES_H
+#ifndef PHYSICS_SIM_TYPES_H
+#define PHYSICS_SIM_TYPES_H
 
 #include <stdint.h>
 
@@ -25,4 +25,4 @@ typedef  int64_t b64;
 typedef float f32;
 typedef float f64;
 
-#endif //ACC_ARDUINO_TYPES_H
+#endif //PHYSICS_SIM_TYPES_H

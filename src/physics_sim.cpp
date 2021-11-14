@@ -10,9 +10,30 @@
 #include <directxmath.h>
 #include <timeapi.h>
 
+#include "physics_sim_config.h"
 #include "physics_sim_types.h"
-#include "physics_sim_math.h"
 #include "physics_sim_memory.h"
+#include "physics_sim_math.h"
+
+
+//-/ TODO & NOTE
+/// Implementation Objectives
+// TODO(MIGUEL): Wall genaration & and enclose window with walls
+//               instead checkin pos agains centered window half dim
+// TODO(MIGUEL): Implende simple collisiont detection
+// TODO(MIGUEL): Rotatate entity to match vel vector direction
+// TODO(MIGUEL): More Entities
+// TODO(MIGUEL): Make entities colide with each other
+// TODO(MIGUEL): Hotswapables sim code
+// TODO(MIGUEL): Hotswapable shader code
+
+/// Learning Objectives
+// TODO(MIGUEL): CH 3 [Beginning DirectX 11 Game Programming] 
+// TODO(MIGUEL): CH 4 [Physics Modeling for Game Programmers] 
+
+//-/ MACROS
+
+#define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
 
 #define KILOBYTES(size) (         (size) * 1024LL)
 
@@ -20,9 +41,7 @@
 #define GIGABYTES(size) (MEGABYTES(size) * 1024LL)
 #define TERABYTES(size) (GIGABYTES(size) * 1024LL)
 
-// TODO(MIGUEL): Phase out use of the legacy DirectX SDK. Use DirectX from the Windows SDK
-
-//LPDIRECT3D9       g_Direct3D     = NULL;
+//-/ TYPES
 
 struct button_state
 {
@@ -82,6 +101,8 @@ struct entity
     v3f32 Vel;
     v3f32 Acc;
     
+    v3f32 Dim; /// Unit: Meters
+    
     // Temp
     f32 RotZ;
     f32 SclX;
@@ -113,35 +134,6 @@ struct win32_WindowDim
     u32 Height;
 };
 
-win32_WindowDim g_WindowDim;
-
-uint32_t g_Running = true;
-
-
-#define DX_GET_ERROR_DESCRIPTION(name) const char* WINAPI name(__in HRESULT hr)
-typedef DX_GET_ERROR_DESCRIPTION(dx_get_error_descriptiona);
-DX_GET_ERROR_DESCRIPTION(dx_get_error_descriptiona_stub)
-{ return "Error: DXGetErrorDescriptionA did not load!!"; }
-
-dx_get_error_descriptiona *DXGetErrorDescriptionA_ = dx_get_error_descriptiona_stub;
-
-
-
-static b32
-D3D9GetDebugCapabilities(void)
-{
-    b32 Result = 1;
-    
-    // NOTE(MIGUEL): LoadLibrary only load Dynamically linked Libraries
-    //               not Statically linked Libraries.
-    
-    //HMODULE Library = LoadLibraryA("F:\\Dev_Tools\\DirectXSDKLegacy\\Lib\\x64\\DxErr.lib");
-    //DXGetErrorDescriptionA_ = (dx_get_error_descriptiona *)GetProcAddress(Library, "DXGetErrorDescriptionA"); 
-    
-    //Result = (DXGetErrorDescriptionA_ != dx_get_error_descriptiona_stub);
-    
-    return Result;
-}
 
 struct buffer
 {
@@ -151,8 +143,16 @@ struct buffer
     void *Data;
 };
 
+//-/ GLOBALS
+
+win32_WindowDim g_WindowDim;
+uint32_t g_Running = true;
+uint32_t g_Pause   = false;
+
+//-/ FUNCTIONS
+
 static void
-bar(renderer *Renderer, buffer *Buffer, u32 Width, u32 Height)
+D3D11InitTextureMappingCrap(renderer *Renderer, buffer *Buffer, u32 Width, u32 Height)
 {
     D3D11_TEXTURE2D_DESC TextDesc = { 0 };
     TextDesc.Width  = Buffer->Width;
@@ -205,15 +205,13 @@ bar(renderer *Renderer, buffer *Buffer, u32 Width, u32 Height)
 static void
 D3D11Release(renderer *Renderer)
 {
-    if(Renderer->TargetView  ) Renderer->TargetView->Release();
-    if(Renderer->SwapChain   ) Renderer->SwapChain->Release();
-    if(Renderer->Context     ) Renderer->Context->Release();
-    if(Renderer->Device      ) Renderer->Device->Release();
+    if(Renderer->TargetView) Renderer->TargetView->Release();
+    if(Renderer->SwapChain ) Renderer->SwapChain->Release();
+    if(Renderer->Context   ) Renderer->Context->Release();
+    if(Renderer->Device    ) Renderer->Device->Release();
     
     return;
 }
-
-#define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
 
 static b32
 D3D11Init(HWND Window, renderer *Renderer)
@@ -331,11 +329,6 @@ static LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM WParam, LPA
     return Result;
 }
 
-#define DEFAULT_WINDOW_COORDX  10
-#define DEFAULT_WINDOW_COORDY  10
-#define DEFAULT_WINDOW_WIDTH  800
-#define DEFAULT_WINDOW_HEIGHT 1000
-
 static HWND CreateOutputWindow()
 {
     WNDCLASSEXW WindowClass = {};
@@ -380,8 +373,6 @@ static HWND CreateOutputWindow()
     return Result;
 }
 
-
-
 void
 ProcessKeyboardMessage(button_state *NewState, b32 IsDown)
 {
@@ -393,7 +384,6 @@ ProcessKeyboardMessage(button_state *NewState, b32 IsDown)
     
     return;
 }
-
 
 void
 ProcessPendingMessages(app_input *Input)
@@ -507,13 +497,37 @@ Update(app_state *AppState)
     
     //v3f32Init(20.0f * Cosine(RotZ), 20.0f *   Sine(RotZ), 0.0f);
     // NOTE(MIGUEL): Equations of motion
-    v3f32 Acc = Entity->Acc * 3.0f;
+    
+    f32   Speed = 0.25f;
+    v3f32 Drag  = {0.0f, 0.0f, 0.0f};
+    v3f32 Acc   = Entity->Acc * 1.0f;
+    v3f32 Vel   = Speed * Entity->Vel + Drag;
     
     v3f32 PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
-                      Entity->Vel * AppState->DeltaTimeMS +
-                      Entity->Pos);
+                      Vel * AppState->DeltaTimeMS);
     
-    v3f32 NewVel = Acc * AppState->DeltaTimeMS + Entity->Vel;
+    Entity->Vel = Acc * AppState->DeltaTimeMS + Entity->Vel;
+    v2f32 TestPos = (Entity->Pos + PosDelta).xy;
+    
+    rect_v2f32 WindowBounds = rect_v2f32CenteredDim(v2f32Init(g_WindowDim.Width,
+                                                              g_WindowDim.Height));
+    
+    
+    if(rect_v2f32IsOutside(WindowBounds, TestPos))
+    {
+        Entity->Vel.x *= -1.0f;
+        Entity->Vel.y *= -1.0f;
+        
+        // NOTE(MIGUEL): Find the wall
+        if(TestPos.x)
+        {
+            
+        }
+        
+        PosDelta.x *= -1.0f;
+        PosDelta.y *= -1.0f;
+        PosDelta.z *= -1.0f;
+    }
     
     Entity->Pos += PosDelta;
     
@@ -691,7 +705,7 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         u8     ShaderCode[4096] = { 0 };
         u32    ShaderCodeSize = 4096;
         
-        ShaderCodeHandle = CreateFileA("..\\sampleshader.hlsl",
+        ShaderCodeHandle = CreateFileA("..\\src\\default.hlsl",
                                        GENERIC_READ, 0, 0,
                                        OPEN_EXISTING,
                                        FILE_ATTRIBUTE_NORMAL,
@@ -796,7 +810,10 @@ void PhysicsSim(app_state *AppState, app_input *Input)
     AppState->EntityCount    =   0;
     AppState->EntityMaxCount = 256;
     
-    for(u32 EntityIndex = 0; EntityIndex < 2; EntityIndex++)
+    
+    // NOTE(MIGUEL): Entity Generation
+    
+    for(u32 EntityIndex = 0; EntityIndex < 1; EntityIndex++)
     {
         
         if(AppState->EntityCount < AppState->EntityMaxCount)
@@ -807,11 +824,33 @@ void PhysicsSim(app_state *AppState, app_input *Input)
             Entity->Pos.y =  0.0f + (20 * EntityIndex);
             Entity->Pos.z =  0.0f;
             
-            Entity->Acc.x = 1.0f;
-            Entity->Acc.y = 1.0f;
+            Entity->Acc.x = 0.0f;
+            Entity->Acc.y = 0.0f;
             Entity->Acc.z = 0.0f;
+            
+            Entity->Vel.x = 1.0f;
+            Entity->Vel.y = 1.0f;
+            Entity->Vel.z = 0.0f;
         }
     };
+    
+    
+    // NOTE(MIGUEL): Entity Generation
+    
+    for(u32 EntityIndex = 0; EntityIndex < 1; EntityIndex++)
+    {
+        
+        if(AppState->EntityCount < AppState->EntityMaxCount)
+        {
+            entity *Entity = &AppState->Entities[AppState->EntityCount++];
+            
+            Entity->Pos.x =  0.0f + (20 * EntityIndex);
+            Entity->Pos.y =  0.0f + (20 * EntityIndex);
+            Entity->Pos.z =  0.0f;
+            
+        }
+    };
+    
     
     b32 g_Pause = 0;
     
@@ -876,8 +915,6 @@ void PhysicsSim(app_state *AppState, app_input *Input)
     return;
 }
 
-// TODO(MIGUEL): CH 3 [Beginning DirectX 11 Game Programming] 
-// TODO(MIGUEL): CH 4 [Physics Modeling for Game Programmers] 
 void WinMainCRTStartup()
 {
     HWND Window = CreateOutputWindow();
@@ -937,8 +974,7 @@ void WinMainCRTStartup()
     return;
 }
 
-// CRT stuff
-
+//~ CRT stuff
 extern "C" int _fltused = 0x9875;
 
 #pragma function(memset)

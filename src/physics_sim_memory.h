@@ -1,12 +1,12 @@
 /* date = September 23rd 2021 9:31 pm */
 
-#ifndef ACC_ARDUINO_MEMORY_H
-#define ACC_ARDUINO_MEMORY_H
+#ifndef PHYSICS_SIM_MEMORY_H
+#define PHYSICS_SIM_MEMORY_H
 
 
 #include "physics_sim_types.h"
 #include "physics_sim_math.h"
-#include "physics_sim_debug.h"
+#include "physics_sim_platform.h"
 
 
 #define PERMANENT_STORAGE_SIZE (MEGABYTES(256))
@@ -69,4 +69,4 @@ MemoryArenaZeroBlock(memory_index size, void *address)
 }
 
 
-#endif //ACC_ARDUINO_MEMORY_H
+#endif //PHYSICS_SIM_MEMORY_H
