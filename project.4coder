@@ -4,10 +4,10 @@ project_name =  "Physics Sim";
 
 patterns = {
     "*.cpp",
-    "*.ino",
     "*.h",
-    "*.bat",
+    "*.hlsl",
     "*.sh",
+    "*.bat",
     "*.4coder",
 };
 
@@ -52,6 +52,14 @@ commands =
 		.save_dirty_files = false, 
 		.cursor_at_end    = false,
 	},
+    
+    .renderdoc =
+    {
+        .win              = "F:\\Dev_Tools\\RenderDoc\\qrenderdoc.exe",
+        .footer_panel     = false, 
+		.save_dirty_files = false, 
+		.cursor_at_end    = false,
+	},
 };
 
 fkey_command = 
@@ -60,4 +68,5 @@ fkey_command =
     
     .F12 = "run",
     .F11 = "debug",
+    .F10 = "renderdoc"
 };

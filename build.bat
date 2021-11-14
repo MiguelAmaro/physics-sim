@@ -30,7 +30,7 @@ set MSVC_FLAGS= ^
 -GS- ^
 -Gs9999999
 
-set MSVC_SEARCH_DIRS=
+set MSVC_SEARCH_DIRS= -I..\
 rem -I%D3D_DIR%\Include\
 
 rem ************************************************************
@@ -42,14 +42,16 @@ shell32.lib ^
 opengl32.lib ^
 kernel32.lib ^
 gdi32.lib ^
+d3d11.lib ^
+d3dcompiler.lib ^
 dinput8.lib ^
 dxguid.lib ^
-%D3D_DIR%\Lib\x64\d3d11.lib ^
-%D3D_DIR%\Lib\x64\dxerr.lib ^
-%D3D_DIR%\Lib\x64\d3dcompiler.lib ^
 winmm.lib ^
 ws2_32.lib 
 
+rem %D3D_DIR%\Lib\x64\d3d11.lib ^
+rem %D3D_DIR%\Lib\x64\dxerr.lib ^
+rem %D3D_DIR%\Lib\x64\ ^
 rem %D3D_DIR%\Lib\x64\d3dx11.lib <- Utility Library is deprecated.
 
 set MSVC_LINK_FLAGS= ^

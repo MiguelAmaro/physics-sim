@@ -1,28 +1,26 @@
 // ConsoleApplication1.cpp : Defines the entry point for the console application.
 
 #define WIN32_LEAN_AND_MEAN
-#include "stdafx.h"
+
 #include <windows.h>
 #include <stdint.h>
 
 #include <d3d11.h>
 #include <d3dcompiler.h>
-//#include <d3dx11.h>
-//#include <d3d9.h>
-//#include <DxErr.h>
-//#include <D3dx9math.h>
+#include <directxmath.h>
+#include <timeapi.h>
 
 #include "physics_sim_types.h"
 #include "physics_sim_math.h"
 #include "physics_sim_memory.h"
-//#include "physics_sim_draw.h"
-//#include "shared_file_out.h"
+
 #define KILOBYTES(size) (         (size) * 1024LL)
 
 #define MEGABYTES(size) (KILOBYTES(size) * 1024LL)
 #define GIGABYTES(size) (MEGABYTES(size) * 1024LL)
 #define TERABYTES(size) (GIGABYTES(size) * 1024LL)
 
+// TODO(MIGUEL): Phase out use of the legacy DirectX SDK. Use DirectX from the Windows SDK
 
 //LPDIRECT3D9       g_Direct3D     = NULL;
 
@@ -38,24 +36,59 @@ struct app_input
     button_state SpawnGraph;
 };
 
-struct app_state
+
+struct gpu_constants
+{
+    m4f32 Matrix;
+    f32   DeltaTime;
+    f32   _padding[3];
+};
+
+struct renderer
 {
     ID3D11Device           *Device;
     ID3D11DeviceContext    *Context;
     IDXGISwapChain         *SwapChain;
     D3D_FEATURE_LEVEL       FeatureLevel;
-    ID3D11RenderTargetView *RenderTarget;
     
-    ID3D11VertexShader *VertexShader;
-    ID3D11PixelShader  *PixelShader;
-    ID3D11InputLayout  *InputLayout;
-    ID3D11Buffer       *VertexBuffer;
+    ID3D11RenderTargetView *TargetView;
+    ID3D11VertexShader     *VertexShader;
+    ID3D11PixelShader      *PixelShader;
+    ID3D11InputLayout      *InputLayout;
+    ID3D11Buffer           *VertexBuffer;
+    ID3D11Buffer           *GPUConstants;
+    
+    gpu_constants           GPUConstantsData;
+};
+
+struct entity
+{
+    v3f32 Pos;
+    v3f32 Vel;
+    v3f32 Acc;
+    
+    // Temp
+    f32 RotZ;
+    f32 SclX;
+    f32 SclY;
+};
+
+struct app_state
+{
+    f32      DeltaTimeMS;
+    f32      Time;
+    
+    renderer Renderer;
+    
+    entity Entities[256];
+    u32 EntityCount;
+    u32 EntityMaxCount;
 };
 
 struct vertex
 {
-    v3f32 e;
-    u32   color;
+    v3f32 pos;
+    v4f32 color;
 };
 
 
@@ -95,13 +128,72 @@ D3D9GetDebugCapabilities(void)
     return Result;
 }
 
-static void
-D3D11Release(app_state *AppState)
+struct buffer
 {
-    if(AppState->RenderTarget) AppState->RenderTarget->Release();
-    if(AppState->SwapChain   ) AppState->SwapChain->Release();
-    if(AppState->Context     ) AppState->Context->Release();
-    if(AppState->Device      ) AppState->Device->Release();
+    u32 Width;
+    u32 Height;
+    u32 BytesPerPixel;
+    void *Data;
+};
+
+static void
+bar(renderer *Renderer, buffer *Buffer, u32 Width, u32 Height)
+{
+    D3D11_TEXTURE2D_DESC TextDesc = { 0 };
+    TextDesc.Width  = Buffer->Width;
+    TextDesc.Height = Buffer->Height;
+    TextDesc.MipLevels = 1;
+    TextDesc.ArraySize = 1;
+    TextDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    TextDesc.SampleDesc.Count   = 1;
+    TextDesc.SampleDesc.Quality = 0;
+    TextDesc.Usage     = D3D11_USAGE_DEFAULT;
+    TextDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    TextDesc.CPUAccessFlags = 0;
+    TextDesc.MiscFlags      = 0;
+    
+    D3D11_SUBRESOURCE_DATA ResData = { 0 };
+    ResData.pSysMem     = Buffer->Data;
+    ResData.SysMemPitch = Buffer->Width * Buffer->BytesPerPixel;
+    
+    // TODO(MIGUEL): Figure out where to throw this
+    ID3D11Texture2D *Texture;
+    
+    Renderer->Device->CreateTexture2D(&TextDesc, &ResData, &Texture);
+    
+    D3D11_SHADER_RESOURCE_VIEW_DESC ResViewDesc = { 0 };
+    ResViewDesc.Format          = TextDesc.Format;
+    ResViewDesc.ViewDimension   = D3D11_SRV_DIMENSION_TEXTURE2D;
+    ResViewDesc.Texture2D.MostDetailedMip = 0;
+    ResViewDesc.Texture2D.MipLevels       = 1;
+    
+    ID3D11ShaderResourceView *ResView;
+    
+    Renderer->Device->CreateShaderResourceView(Texture, &ResViewDesc, &ResView);
+    
+    ID3D11SamplerState *SamplerState;
+    
+    D3D11_SAMPLER_DESC SamplerDesc = { 0 };
+    SamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    SamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    SamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    SamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    
+    Renderer->Device->CreateSamplerState(&SamplerDesc, &SamplerState);
+    
+    // TODO(MIGUEL): Move to render()
+    Renderer->Context->PSSetSamplers(0, 1, &SamplerState);
+    
+    return;
+}
+
+static void
+D3D11Release(renderer *Renderer)
+{
+    if(Renderer->TargetView  ) Renderer->TargetView->Release();
+    if(Renderer->SwapChain   ) Renderer->SwapChain->Release();
+    if(Renderer->Context     ) Renderer->Context->Release();
+    if(Renderer->Device      ) Renderer->Device->Release();
     
     return;
 }
@@ -109,7 +201,7 @@ D3D11Release(app_state *AppState)
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
 
 static b32
-D3D11Init(HWND Window, app_state *AppState)
+D3D11Init(HWND Window, renderer *Renderer)
 {
     HRESULT Status;
     b32     Result = true;
@@ -121,6 +213,7 @@ D3D11Init(HWND Window, app_state *AppState)
     D3D_FEATURE_LEVEL Levels[] = {D3D_FEATURE_LEVEL_11_0};
     
 #if 0
+    // NOTE(MIGUEL): For if I want to ceate the device and swapchain seperately.
     Status = D3D11CreateDevice(0,
                                D3D_DRIVER_TYPE_HARDWARE,
                                0,
@@ -153,28 +246,28 @@ D3D11Init(HWND Window, app_state *AppState)
                                            Levels, ARRAYSIZE(Levels),
                                            D3D11_SDK_VERSION,
                                            &SwapChainDescription,
-                                           &AppState->SwapChain,
-                                           &AppState->Device,
-                                           &AppState->FeatureLevel, &AppState->Context );
+                                           &Renderer->SwapChain,
+                                           &Renderer->Device,
+                                           &Renderer->FeatureLevel, &Renderer->Context );
     
     ASSERT(SUCCEEDED(Status));
     
     
     ID3D11Texture2D        *BackBufferTexture;
     
-    AppState->SwapChain->GetBuffer(0,
+    Renderer->SwapChain->GetBuffer(0,
                                    __uuidof(ID3D11Texture2D),
                                    (LPVOID *)&BackBufferTexture);
     
-    Status = AppState->Device->CreateRenderTargetView(BackBufferTexture, 0,
-                                                      &AppState->RenderTarget);
+    Status = Renderer->Device->CreateRenderTargetView(BackBufferTexture, 0,
+                                                      &Renderer->TargetView);
     
     BackBufferTexture->Release();
     
     ASSERT(SUCCEEDED(Status));
     
     
-    AppState->Context->OMSetRenderTargets(1, &AppState->RenderTarget, 0);
+    Renderer->Context->OMSetRenderTargets(1, &Renderer->TargetView, 0);
     
     D3D11_VIEWPORT ViewPort;
     ViewPort.Width  = (f32)g_WindowDim.Width;
@@ -184,46 +277,7 @@ D3D11Init(HWND Window, app_state *AppState)
     ViewPort.TopLeftX = 0.0f;
     ViewPort.TopLeftY = 0.0f;
     
-    AppState->Context->RSSetViewports(1, &ViewPort);
-    
-    
-#if 0
-    //D3DDISPLAYMODE        CurrentDisplay = {0};
-    //D3DPRESENT_PARAMETERS PresentParams  = {0};
-    
-    //D3D9GetDebugCapabilities();
-    
-    //PresentParams.Windowed      = true; 
-    //PresentParams.hDeviceWindow = Window; 
-    //PresentParams.SwapEffect    = D3DSWAPEFFECT_DISCARD;
-    
-    //*Direct3D = Direct3DCreate9(D3D_SDK_VERSION);
-    
-    const char *Info = NULL;
-    /*
-    if(*Direct3D)
-    {
-        if(FAILED(Status = g_Direct3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &CurrentDisplay)))
-        {
-            Result = false;
-        }
-        
-        if(FAILED(Status = g_Direct3D->CreateDevice(D3DADAPTER_DEFAULT, 
-                                                    D3DDEVTYPE_HAL,
-                                                    Window,
-                                                    D3DCREATE_HARDWARE_VERTEXPROCESSING,
-                                                    &PresentParams,
-                                                    RenderDevice)))
-        {
-            Result = false;
-            
-            Info = DXGetErrorDescriptionA_(Status);
-            
-            OutputDebugString(Info);
-        }
-    }
-    */
-#endif
+    Renderer->Context->RSSetViewports(1, &ViewPort);
     
     return Result;
 }
@@ -427,35 +481,53 @@ ProcessPendingMessages(app_input *Input)
     return;
 }
 
-#define VERTEX_TYPE_SPECIFIER (D3DFVF_XYZ | D3DFVF_DIFFUSE)
-#include <timeapi.h>
+//#define VERTEX_TYPE_SPECIFIER (D3DFVF_XYZ | D3DFVF_DIFFUSE)
+
+#define TEST 1
+#define DIRECTXMATH_CRUTCH 0
 void
 Update(app_state *AppState)
 {
-#if 0
-    D3DXMATRIXA16 WorldMatrix;
+    renderer *Renderer = &AppState->Renderer;
+#if TEST
+    m4f32 Indentity = m4f32Identity();
+    m4f32 Test;
+    Test.r[0] = v4f32Init(1.0f ,  2.0f,  3.0f,  4.0f);
+    Test.r[1] = v4f32Init(2.0f ,  4.0f,  6.0f,  8.0f);
+    Test.r[2] = v4f32Init(3.0f ,  8.0f, 12.0f, 16.0f);
+    Test.r[3] = v4f32Init(4.0f , 16.0f, 24.0f, 32.0f);
     
-    UINT CurrentTime = timeGetTime() % 1000;
-    FLOAT RotationAngle = CurrentTime * (2.0f * D3DX_PI) / 1000.0f;
-    D3DXMatrixRotationZ(&WorldMatrix, RotationAngle);
+    m4f32 Result = Test * Indentity;
     
-    AppState->RenderDevice->SetTransform(D3DTS_WORLD, &WorldMatrix);
-    D3DXVECTOR3 EyePoint(0.0f, 3.0f, -5.0f);
-    D3DXVECTOR3 LookAtPoint(0.0f, 0.0f, 0.0f);
-    D3DXVECTOR3 UpDirection(0.0f, 1.0f, 0.0f);
-    
-    D3DXMATRIXA16 ViewMatrix;
-    D3DXMatrixLookAtLH(&ViewMatrix, &EyePoint, &LookAtPoint, &UpDirection);
-    AppState->RenderDevice->SetTransform(D3DTS_VIEW, &ViewMatrix);
-    
-    
-    D3DXMATRIXA16 ProjectionMatrix;
-    D3DXMatrixPerspectiveFovLH(&ProjectionMatrix,
-                               D3DX_PI / 4,
-                               1.0f, 1.0f, 100.0f);
-    
-    AppState->RenderDevice->SetTransform(D3DTS_PROJECTION, &ProjectionMatrix);
+    ASSERT(Test == Result);
 #endif
+    
+    static f32 RotZ = 0.0f;
+    
+    RotZ += 0.2f;
+    
+    v3f32 PosDelta = v3f32Init(Cosine(RotZ), 0.0f, 0.0f);
+    
+    m4f32 Trans  = m4f32Translation(PosDelta);
+    m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, RotZ);
+    //m4f32 Scale  = m4f32Scale(0.5f, 0.2f, 1.0f);
+    m4f32 World  =  Trans; //Rotate ;//* Scale;
+    
+    m4f32 View = m4f32Viewport(v2f32Init(g_WindowDim.Width, g_WindowDim.Height)); 
+    m4f32 Proj = m4f32Orthographic(0.0f, g_WindowDim.Width, 0.0f, g_WindowDim.Height, 0.0f, 100.0f);
+    
+    m4f32 ViewProj = View * Proj;
+    
+    
+    // NOTE(MIGUEL): This is only because this constant buffer isnt set to
+    //               dynamic.
+    // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
+    AppState->Renderer.GPUConstantsData.DeltaTime = AppState->DeltaTimeMS;
+    AppState->Renderer.GPUConstantsData.Matrix    = World;
+    
+    Renderer->Context->UpdateSubresource(Renderer->GPUConstants, 0, 0,
+                                         &Renderer->GPUConstantsData,0, 0);
+    
     
     return;
 }
@@ -463,25 +535,43 @@ Update(app_state *AppState)
 void
 Render(app_state *AppState)
 {
-    if(AppState->Context)
+    renderer *Renderer = &AppState->Renderer;
+    
+    if(Renderer->Context)
     {
-        v4f32 ClearColor = v4f32Init(0.20f, 0.20f, 0.25f, 1.0f);
+        //                             R      G      B      A
+        v4f32 ClearColor = v4f32Init(0.10f, 0.10f, 0.10f, 1.0f);
         
-        AppState->Context->ClearRenderTargetView(AppState->RenderTarget, ClearColor.e);
+        Renderer->Context->ClearRenderTargetView(Renderer->TargetView, ClearColor.c);
         
-        u32 Stride = sizeof(v3f32);
-        u32 Offset = 0;
+        HRESULT Result;
         
-        AppState->Context->IASetInputLayout(AppState->InputLayout);
-        AppState->Context->IASetVertexBuffers(0, 1, &AppState->VertexBuffer, &Stride, &Offset);
-        AppState->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        // NOTE(MIGUEL): Sets the Model and How to Shade it
+        u32 Stride[] = {sizeof(vertex)};
+        u32 Offset[] = { 0 };
         
-        AppState->Context->VSSetShader(AppState->VertexShader, 0, 0);
-        AppState->Context->PSSetShader(AppState->PixelShader , 0, 0);
+        Renderer->Context->IASetVertexBuffers(0, 1, &Renderer->VertexBuffer, Stride, Offset);
+        Renderer->Context->IASetInputLayout(Renderer->InputLayout);
+        Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         
-        AppState->Context->Draw(3, 0);
+        Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
+        Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->GPUConstants);
         
-        AppState->SwapChain->Present(0 , 0);
+        Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
+        
+        
+        // NOTE(MIGUEL): Drawing Entities useing the Model set above
+        entity *Entity = AppState->Entities;
+        
+        for(u32 EntityIndex = 0;
+            EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
+        {
+            // NOTE(MIGUEL): I think this will be useful for instancing.
+        };
+        
+        Renderer->Context->Draw(3, 0);
+        
+        Renderer->SwapChain->Present(0 , 0);
     }
     
     return;
@@ -497,30 +587,21 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
     //               it changes the vectors in the coordinate system. (This moving in the enviorment.)
     //               Both can be used
     
+    renderer *Renderer = &AppState->Renderer;
     
+    HRESULT Result;
+    
+    u32 VerticesSize = sizeof(vertex) * 3;
+    
+    
+    // NOTE(MIGUEL): Creating a Model. Ill Reuse this for all Entities.
     {
-        HRESULT Result;
-        
-#if 0
-        u32 VerticesSize = sizeof(vertex) * 3;
-        
         vertex Vertices[] =
         {
-            {v3f32Init( 0.5f,  0.5f, 0.5f), 0xFFff0000 },
-            {v3f32Init( 0.5f, -0.5f, 0.5f), 0xFF0000ff },
-            {v3f32Init(-0.5f, -0.5f, 0.5f), 0xFFffffff },
-            
+            {v3f32Init( 0.0f,  0.5f, 0.5f), v4f32Init( 1.0f, 0.0f, 0.0f, 1.0f)},
+            {v3f32Init( 0.5f, -0.5f, 0.5f), v4f32Init( 0.0f, 1.0f, 0.0f, 1.0f)},
+            {v3f32Init(-0.5f, -0.5f, 0.5f), v4f32Init( 0.0f, 0.0f, 1.0f, 1.0f)},
         };
-#else
-        u32 VerticesSize = sizeof(v3f32) * 3;
-        
-        v3f32 Vertices[] =
-        {
-            {v3f32Init( 0.5f,  0.5f, 0.5f)},
-            {v3f32Init( 0.5f, -0.5f, 0.5f)},
-            {v3f32Init(-0.5f, -0.5f, 0.5f)},
-        };
-#endif
         
         D3D11_BUFFER_DESC VertexDescriptor = { 0 };
         
@@ -531,12 +612,43 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         D3D11_SUBRESOURCE_DATA ResourceData = { 0 };
         ResourceData.pSysMem = Vertices;
         
-        //ID3D11Buffer* VertexBuffer;
-        Result = AppState->Device->CreateBuffer(&VertexDescriptor,
+        Result = Renderer->Device->CreateBuffer(&VertexDescriptor,
                                                 &ResourceData,
-                                                &AppState->VertexBuffer );
+                                                &Renderer->VertexBuffer );
         ASSERT(!FAILED(Result));
         
+        
+        // NOTE(MIGUEL): What is the difference between dynamic and default usage?
+        //               Why cant i use updatesubresource using dynamic and how do
+        //               i pass const buff data to the pipeline. 
+        // https://docs.microsoft.com/en-us/windows/win32/direct3d11/how-to--use-dynamic-resources
+        D3D11_BUFFER_DESC GPUConstantsDesc = { 0 };
+        GPUConstantsDesc.Usage          = D3D11_USAGE_DEFAULT; //D3D11_USAGE_DYNAMIC;
+        GPUConstantsDesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
+        GPUConstantsDesc.CPUAccessFlags = 0; //D3D11_CPU_ACCESS_WRITE;
+        GPUConstantsDesc.ByteWidth      = sizeof(gpu_constants);
+        
+        D3D11_SUBRESOURCE_DATA GPUConstantsResource = { 0 };
+        GPUConstantsResource.pSysMem = &Renderer->GPUConstantsData;
+        
+        Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
+                                                &GPUConstantsResource,
+                                                &Renderer->GPUConstants);
+        
+        
+        Renderer->Context->UpdateSubresource(Renderer->GPUConstants,
+                                             0, 0,
+                                             &Renderer->GPUConstantsData,
+                                             0, 0 );
+        
+        
+        ASSERT(!FAILED(Result));
+        
+        
+    }
+    
+    // NOTE(MIGUEL): Ways to draw a Model
+    {
         /// CREATE VERTEX SHADER
         ID3DBlob *VertexShaderBuffer;
         
@@ -548,7 +660,7 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         HANDLE ShaderCodeHandle;
         u8     ShaderCode[1024] = { 0 };
         
-        ShaderCodeHandle = CreateFileA("..\\sampleshader.fx",
+        ShaderCodeHandle = CreateFileA("..\\sampleshader.hlsl",
                                        GENERIC_READ, 0, 0,
                                        OPEN_EXISTING,
                                        FILE_ATTRIBUTE_NORMAL,
@@ -579,9 +691,9 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
             }
         }
         
-        Result = AppState->Device->CreateVertexShader(VertexShaderBuffer->GetBufferPointer(),
+        Result = Renderer->Device->CreateVertexShader(VertexShaderBuffer->GetBufferPointer(),
                                                       VertexShaderBuffer->GetBufferSize(), 0,
-                                                      &AppState->VertexShader);
+                                                      &Renderer->VertexShader);
         
         if(FAILED(Result))
         {
@@ -591,7 +703,7 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         }
         
         /// SET INPUT LAYOUT
-        D3D11_INPUT_ELEMENT_DESC VertexLayout[1] = { 0 };
+        D3D11_INPUT_ELEMENT_DESC VertexLayout[2] = { 0 };
         
         VertexLayout[0].SemanticName         = "POSITION";
         VertexLayout[0].SemanticIndex        = 0;
@@ -600,31 +712,28 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         VertexLayout[0].AlignedByteOffset    = 0;
         VertexLayout[0].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
         VertexLayout[0].InstanceDataStepRate = 0;
-#if 0
+        
         VertexLayout[1].SemanticName         = "COLOR";
         VertexLayout[1].SemanticIndex        = 0;
-        VertexLayout[1].Format               = DXGI_FORMAT_R8G8B8A8_UNORM;
+        VertexLayout[1].Format               = DXGI_FORMAT_R32G32B32A32_FLOAT;
         VertexLayout[1].InputSlot            = 0;
-        VertexLayout[1].AlignedByteOffset    = 0;
+        VertexLayout[1].AlignedByteOffset    = D3D11_APPEND_ALIGNED_ELEMENT;
         VertexLayout[1].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
         VertexLayout[1].InstanceDataStepRate = 0;
-#endif
+        
         u32 TotalLayoutElements = ARRAYSIZE(VertexLayout);
         
-        Result = AppState->Device->CreateInputLayout(VertexLayout,
+        Result = Renderer->Device->CreateInputLayout(VertexLayout,
                                                      TotalLayoutElements,
                                                      VertexShaderBuffer->GetBufferPointer(),
                                                      VertexShaderBuffer->GetBufferSize(),
-                                                     &AppState->InputLayout);
+                                                     &Renderer->InputLayout);
         
         if(VertexShaderBuffer) VertexShaderBuffer->Release();
         
         /// CREATE PIXEL SHADER
         
         ID3DBlob* PixelShaderBuffer = 0;
-        //ID3DBlob* ErrorBuffer = 0;
-        
-        // NOTE(MIGUEL): Already read shader file so should be in ShaderCode buffer 
         
         Result = D3DCompile(ShaderCode,
                             1024,
@@ -646,9 +755,9 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
             }
         }
         
-        Result = AppState->Device->CreatePixelShader(PixelShaderBuffer->GetBufferPointer(),
+        Result = Renderer->Device->CreatePixelShader(PixelShaderBuffer->GetBufferPointer(),
                                                      PixelShaderBuffer->GetBufferSize(), 0,
-                                                     &AppState->PixelShader);
+                                                     &Renderer->PixelShader);
         
         
         if(PixelShaderBuffer) PixelShaderBuffer->Release();
@@ -659,10 +768,43 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         }
     }
     
+    
+    for(u32 EntityIndex; EntityIndex < 20; EntityIndex++)
+    {
+        
+        if(AppState->EntityCount < AppState->EntityMaxCount)
+        {
+            entity Entity = AppState->Entities[AppState->EntityCount++];
+            
+            Entity.Pos.x = -0.5f + ( 0.1f * EntityIndex);
+            Entity.Pos.y =  0.5f + (-0.1f * EntityIndex);
+            Entity.Pos.z =  0.0f;
+            
+#if 0
+            Entity.Acc.x = ;
+            Entity.Acc.y = ;
+            Entity.Acc.z = ;
+#endif
+        }
+    };
+    
     b32 g_Pause = 0;
+    
+    LARGE_INTEGER TickFrequency;
+    LARGE_INTEGER WorkStartTick;
+    LARGE_INTEGER WorkEndTick;
+    LARGE_INTEGER WorkTickDelta;
+    LARGE_INTEGER MicrosElapsedWorking;
+    f32 TargetFPS = 60.0f;
+    u64 TargetMicrosPerFrame = 16666;
+    
+    QueryPerformanceFrequency(&TickFrequency);
     
     while (g_Running)
     {
+        // NOTE(MIGUEL): Start Timer
+        QueryPerformanceCounter  (&WorkStartTick);
+        
         ProcessPendingMessages(Input);
         
         if(!g_Pause)
@@ -671,6 +813,39 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
             
             Render(AppState);
         }
+        
+        QueryPerformanceCounter  (&WorkEndTick);
+        WorkTickDelta.QuadPart     = WorkEndTick.QuadPart - WorkStartTick.QuadPart;
+        WorkTickDelta.QuadPart     = WorkTickDelta.QuadPart * 1000000;
+        MicrosElapsedWorking.QuadPart = WorkTickDelta.QuadPart / TickFrequency.QuadPart;
+        
+        // NOTE(MIGUEL): Wait
+        LARGE_INTEGER WaitTickDelta;
+        LARGE_INTEGER WaitStartTick;
+        LARGE_INTEGER WaitEndTick   = WorkEndTick;
+        LARGE_INTEGER MicrosElapsedWaiting = { 0 };
+        
+        while((MicrosElapsedWorking.QuadPart +
+               MicrosElapsedWaiting.QuadPart )
+              < TargetMicrosPerFrame)
+        {
+            QueryPerformanceCounter  (&WaitStartTick);
+            
+            u32 TimeToSleep = (TargetMicrosPerFrame -
+                               MicrosElapsedWorking.QuadPart +
+                               MicrosElapsedWaiting.QuadPart) / 1000;
+            
+            Sleep(TimeToSleep);
+            
+            QueryPerformanceCounter  (&WaitEndTick);
+            WaitTickDelta.QuadPart         = WaitEndTick.QuadPart - WaitStartTick.QuadPart;
+            WaitTickDelta.QuadPart         = WaitTickDelta.QuadPart * 1000000;
+            MicrosElapsedWaiting.QuadPart += (WaitTickDelta.QuadPart / TickFrequency.QuadPart);
+        }
+        
+        AppState->DeltaTimeMS  = (f32)((MicrosElapsedWorking.QuadPart + MicrosElapsedWaiting.QuadPart) / 1000);
+        AppState->Time        += AppState->DeltaTimeMS;
+        
     }
     
     return;
@@ -682,34 +857,33 @@ void WinMainCRTStartup()
 {
     HWND Window = CreateOutputWindow();
     
-    
     app_memory AppMemory = { 0 };
     
     LPVOID BaseAddress = 0;
-    
-    AppMemory.PermanentStorageSize = PERMANENT_STORAGE_SIZE;
-    AppMemory.TransientStorageSize = TRANSIENT_STORAGE_SIZE;
-    
-    AppMemory.MainBlockSize = (AppMemory.PermanentStorageSize +
-                               AppMemory.TransientStorageSize);
-    
-    AppMemory.MainBlock = VirtualAlloc(BaseAddress, 
-                                       (size_t)AppMemory.MainBlockSize,
-                                       MEM_COMMIT | MEM_RESERVE,
-                                       PAGE_READWRITE);
-    
-    AppMemory.PermanentStorage = ((uint8_t *)AppMemory.MainBlock);
-    
-    AppMemory.TransientStorage = ((uint8_t *)AppMemory.PermanentStorage +
-                                  AppMemory.PermanentStorageSize);
-    
-    
+    {
+        AppMemory.PermanentStorageSize = PERMANENT_STORAGE_SIZE;
+        AppMemory.TransientStorageSize = TRANSIENT_STORAGE_SIZE;
+        
+        AppMemory.MainBlockSize        = (AppMemory.PermanentStorageSize +
+                                          AppMemory.TransientStorageSize);
+        
+        AppMemory.MainBlock            = VirtualAlloc(BaseAddress, 
+                                                      (size_t)AppMemory.MainBlockSize,
+                                                      MEM_COMMIT | MEM_RESERVE,
+                                                      PAGE_READWRITE);
+        
+        AppMemory.PermanentStorage     = ((uint8_t *)AppMemory.MainBlock);
+        
+        AppMemory.TransientStorage     = ((uint8_t *)AppMemory.PermanentStorage +
+                                          AppMemory.PermanentStorageSize);
+        
+    }
     app_state *AppState = (app_state *)AppMemory.PermanentStorage;
     
     app_input Input;
     
-    /*// NOTE(MIGUEL): NOT IN USE
-    
+#if 0
+    // NOTE(MIGUEL): NOT IN USE
     memory_arena RenderArena = { 0 };
     
     MemoryArenaInit(&RenderArena,
@@ -721,16 +895,17 @@ void WinMainCRTStartup()
     MemoryArenaInit(&InputArena,
                     GIGABYTES(1),
                     AppMemory.TransientStorage);
-    */
+    
+#endif
     
     // NOTE(MIGUEL): Device is created for processing rasterization
-    if(D3D11Init(Window, AppState))
+    if(D3D11Init(Window, &AppState->Renderer))
     {
         PhysicsSimulation(AppState, &Input);
     }
     
     
-    D3D11Release(AppState);
+    D3D11Release(&AppState->Renderer);
     
     ExitProcess(0);
     
@@ -761,4 +936,11 @@ void *memcpy(void *DestInit, void const *SourceInit, size_t Size)
         *Dest++ = *Source++;
     
     return DestInit;
+}
+
+void _wassert(wchar_t const* message,
+              wchar_t const* filename,
+              unsigned line)
+{
+    return;
 }
