@@ -22,7 +22,6 @@ f32 Cosine(f32 Radians)
     return Result;
 };
 
-
 f32 Sine(f32 Radians)
 {
     f32 Result = 0.0f;
@@ -30,6 +29,13 @@ f32 Sine(f32 Radians)
     __m128 Shit = sin_ps(_mm_load_ss(&Radians));
     
     _mm_store_ss(&Result, Shit);
+    
+    return Result;
+};
+
+f32 Square(f32 Value)
+{
+    f32 Result = Value * Value;
     
     return Result;
 };
@@ -190,6 +196,29 @@ v3f32 operator *(f32 Scalar, v3f32 A)
     return Result;
 }
 
+
+v3f32 operator +(v3f32 A, v3f32 B)
+{
+    v3f32 Result = { 0 };
+    
+    Result.x = A.x + B.x;
+    Result.y = A.y + B.y;
+    Result.z = A.z + B.z;
+    
+    return Result;
+}
+
+void operator +=(v3f32 &A, v3f32 B)
+{
+    v3f32 Result = A;
+    
+    Result.x = A.x + B.x;
+    Result.y = A.y + B.y;
+    Result.z = A.z + B.z;
+    
+    return;
+}
+
 v3f32 operator *=(v3f32 &A, f32 Scalar)
 {
     v3f32 Result = A;
@@ -201,6 +230,16 @@ v3f32 operator *=(v3f32 &A, f32 Scalar)
     return Result;
 }
 
+b32 operator ==(v3f32 A, v3f32 B)
+{
+    b32 Result = 0;
+    u32 Index  = 0;
+    
+    while((Result = (A.c[Index] == B.c[Index])) &&
+          (Index++ < (3 - 1)));
+    
+    return Result;
+}
 
 //- VECTOR 4D 
 v4f32 v4f32Init(f32 x, f32 y, f32 z, f32 w)
@@ -237,7 +276,6 @@ m2f32Scale(m2f32 *Matrix, f32 ScaleX, f32 ScaleY)
     
     return;
 }
-
 
 static m3f32
 m3f32Rotation(f32 x, f32 y)
@@ -381,12 +419,17 @@ static m4f32
 m4f32Translation(v3f32 PosDelta)
 {
     m4f32 Result = { 0 };
-    
+#if 0
     Result.r[0] = v4f32Init(1.0f, 0.0f, 0.0f, PosDelta.x);
     Result.r[1] = v4f32Init(0.0f, 1.0f, 0.0f, PosDelta.y);
     Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, PosDelta.z);
     Result.r[3] = v4f32Init(0.0f, 0.0f, 0.0f, 1.0f);
-    
+#else
+    Result.r[0] = v4f32Init(1.0f, 0.0f, 0.0f, 0.0f);
+    Result.r[1] = v4f32Init(0.0f, 1.0f, 0.0f, 0.0f);
+    Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, 0.0f);
+    Result.r[3] = v4f32Init(PosDelta.x, PosDelta.y, PosDelta.z, 1.0f);
+#endif
     return Result;
 }
 
@@ -403,6 +446,9 @@ m4f32Viewport(v2f32 WindowDim)
     return Result;
 }
 
+// https://docs.microsoft.com/en-us/windows/win32/direct3d9/d3dxmatrixorthorh?redirectedfrom=MSDN
+// https://blog.demofox.org/2017/03/31/orthogonal-projection-matrix-plainly-explained/
+// https://docs.microsoft.com/en-us/windows/win32/direct3d9/d3dxmatrixorthooffcenterrh
 static m4f32
 m4f32Orthographic(f32 LeftPlane,
                   f32 RightPlane,
@@ -415,15 +461,13 @@ m4f32Orthographic(f32 LeftPlane,
 #if 1
     // NORMALIZING X
     Result.r[0].c[0] = 2.0f / (RightPlane - LeftPlane);
-    Result.r[0].c[3] = -1.0f * ((RightPlane + LeftPlane) / (RightPlane - LeftPlane));
     
     // NORMALIZING Y
     Result.r[1].c[1] = 2.0f / (TopPlane - BottomPlane);
-    Result.r[1].c[3] = -1.0f * ((TopPlane + BottomPlane) / (TopPlane - BottomPlane));
     
     // NORMALIZING Z
-    Result.r[2].c[2] = 1.0f / (NearPlane - FarPlane);
-    Result.r[2].c[3] = -1.0f * ((NearPlane) / (NearPlane - FarPlane));
+    Result.r[2].c[2] = 1.0f / (FarPlane - NearPlane);
+    Result.r[2].c[3] = -1.0f * ((NearPlane) / (FarPlane - NearPlane));
     
     // DISREGARDING W
     Result.r[3].c[3] = 1.0f;

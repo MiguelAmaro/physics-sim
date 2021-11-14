@@ -36,12 +36,22 @@ struct app_input
     button_state SpawnGraph;
 };
 
-
-struct gpu_constants
+// NOTE(MIGUEL): For constant buffer by update frequency(low, high, static)
+struct gpu_const_high
 {
-    m4f32 Matrix;
-    f32   DeltaTime;
+    m4f32 World;
+    f32   Time;
     f32   _padding[3];
+};
+
+struct gpu_const_low
+{
+    m4f32  Proj;
+};
+
+struct gpu_const_static
+{
+    m4f32  View;
 };
 
 struct renderer
@@ -56,9 +66,14 @@ struct renderer
     ID3D11PixelShader      *PixelShader;
     ID3D11InputLayout      *InputLayout;
     ID3D11Buffer           *VertexBuffer;
-    ID3D11Buffer           *GPUConstants;
     
-    gpu_constants           GPUConstantsData;
+    ID3D11Buffer *CBHigh;
+    ID3D11Buffer *CBLow;
+    ID3D11Buffer *CBStatic;
+    
+    gpu_const_high   ConstBufferHigh;
+    gpu_const_low    ConstBufferLow;
+    gpu_const_static ConstBufferStatic;
 };
 
 struct entity
@@ -481,52 +496,60 @@ ProcessPendingMessages(app_input *Input)
     return;
 }
 
-//#define VERTEX_TYPE_SPECIFIER (D3DFVF_XYZ | D3DFVF_DIFFUSE)
-
-#define TEST 1
-#define DIRECTXMATH_CRUTCH 0
 void
 Update(app_state *AppState)
 {
     renderer *Renderer = &AppState->Renderer;
-#if TEST
-    m4f32 Indentity = m4f32Identity();
-    m4f32 Test;
-    Test.r[0] = v4f32Init(1.0f ,  2.0f,  3.0f,  4.0f);
-    Test.r[1] = v4f32Init(2.0f ,  4.0f,  6.0f,  8.0f);
-    Test.r[2] = v4f32Init(3.0f ,  8.0f, 12.0f, 16.0f);
-    Test.r[3] = v4f32Init(4.0f , 16.0f, 24.0f, 32.0f);
-    
-    m4f32 Result = Test * Indentity;
-    
-    ASSERT(Test == Result);
-#endif
+    entity   *Entity   =  AppState->Entities;
     
     static f32 RotZ = 0.0f;
-    
     RotZ += 0.2f;
     
-    v3f32 PosDelta = v3f32Init(Cosine(RotZ), 0.0f, 0.0f);
+    //v3f32Init(20.0f * Cosine(RotZ), 20.0f *   Sine(RotZ), 0.0f);
+    // NOTE(MIGUEL): Equations of motion
+    v3f32 Acc = Entity->Acc * 3.0f;
     
-    m4f32 Trans  = m4f32Translation(PosDelta);
+    v3f32 PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
+                      Entity->Vel * AppState->DeltaTimeMS +
+                      Entity->Pos);
+    
+    v3f32 NewVel = Acc * AppState->DeltaTimeMS + Entity->Vel;
+    
+    Entity->Pos += PosDelta;
+    
+    m4f32 Trans  = m4f32Translation(Entity->Pos);
     m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, RotZ);
-    //m4f32 Scale  = m4f32Scale(0.5f, 0.2f, 1.0f);
-    m4f32 World  =  Trans; //Rotate ;//* Scale;
+    m4f32 Scale  = m4f32Scale   (g_WindowDim.Width  / 4.0f,
+                                 g_WindowDim.Height / 4.0f, 1.0f);
+    m4f32 World  = Scale * Trans;
     
     m4f32 View = m4f32Viewport(v2f32Init(g_WindowDim.Width, g_WindowDim.Height)); 
     m4f32 Proj = m4f32Orthographic(0.0f, g_WindowDim.Width, 0.0f, g_WindowDim.Height, 0.0f, 100.0f);
     
-    m4f32 ViewProj = View * Proj;
-    
-    
     // NOTE(MIGUEL): This is only because this constant buffer isnt set to
-    //               dynamic.
+    //               dynamic.(UpdateSubresource() call)
     // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
-    AppState->Renderer.GPUConstantsData.DeltaTime = AppState->DeltaTimeMS;
-    AppState->Renderer.GPUConstantsData.Matrix    = World;
     
-    Renderer->Context->UpdateSubresource(Renderer->GPUConstants, 0, 0,
-                                         &Renderer->GPUConstantsData,0, 0);
+    // NOTE(MIGUEL): High Update Frequency
+    AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
+    AppState->Renderer.ConstBufferHigh.World  = World;
+    
+    Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
+                                         &Renderer->ConstBufferHigh, 0, 0);
+    
+    
+    // NOTE(MIGUEL): Low Update Frequency
+    AppState->Renderer.ConstBufferLow.Proj    = Proj;
+    
+    Renderer->Context->UpdateSubresource(Renderer->CBLow, 0, 0,
+                                         &Renderer->ConstBufferLow, 0, 0);
+    
+    
+    // NOTE(MIGUEL): No Update Frequency
+    AppState->Renderer.ConstBufferStatic.View = View;
+    
+    Renderer->Context->UpdateSubresource(Renderer->CBStatic, 0, 0,
+                                         &Renderer->ConstBufferStatic, 0, 0);
     
     
     return;
@@ -555,7 +578,9 @@ Render(app_state *AppState)
         Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         
         Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-        Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->GPUConstants);
+        Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
+        Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBStatic);
+        Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
         
         Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
         
@@ -577,9 +602,7 @@ Render(app_state *AppState)
     return;
 }
 
-
-
-void PhysicsSimulation(app_state *AppState, app_input *Input)
+void PhysicsSim(app_state *AppState, app_input *Input)
 {
     // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
     //               system. (World moving around you when walking to simulate you looking around)
@@ -626,24 +649,31 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         GPUConstantsDesc.Usage          = D3D11_USAGE_DEFAULT; //D3D11_USAGE_DYNAMIC;
         GPUConstantsDesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
         GPUConstantsDesc.CPUAccessFlags = 0; //D3D11_CPU_ACCESS_WRITE;
-        GPUConstantsDesc.ByteWidth      = sizeof(gpu_constants);
+        GPUConstantsDesc.ByteWidth      = sizeof(gpu_const_high);
         
         D3D11_SUBRESOURCE_DATA GPUConstantsResource = { 0 };
-        GPUConstantsResource.pSysMem = &Renderer->GPUConstantsData;
+        GPUConstantsResource.pSysMem = &Renderer->ConstBufferHigh;
         
         Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
                                                 &GPUConstantsResource,
-                                                &Renderer->GPUConstants);
-        
-        
-        Renderer->Context->UpdateSubresource(Renderer->GPUConstants,
-                                             0, 0,
-                                             &Renderer->GPUConstantsData,
-                                             0, 0 );
-        
-        
+                                                &Renderer->CBHigh);
         ASSERT(!FAILED(Result));
         
+        GPUConstantsDesc.ByteWidth      = sizeof(gpu_const_low);
+        GPUConstantsResource.pSysMem = &Renderer->ConstBufferLow;
+        
+        Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
+                                                &GPUConstantsResource,
+                                                &Renderer->CBLow);
+        ASSERT(!FAILED(Result));
+        
+        GPUConstantsDesc.ByteWidth      = sizeof(gpu_const_static);
+        GPUConstantsResource.pSysMem = &Renderer->ConstBufferStatic;
+        
+        Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
+                                                &GPUConstantsResource,
+                                                &Renderer->CBStatic);
+        ASSERT(!FAILED(Result));
         
     }
     
@@ -658,7 +688,8 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         
         // NOTE(MIGUEL): D3DX11CompileFromFile is depricated
         HANDLE ShaderCodeHandle;
-        u8     ShaderCode[1024] = { 0 };
+        u8     ShaderCode[4096] = { 0 };
+        u32    ShaderCodeSize = 4096;
         
         ShaderCodeHandle = CreateFileA("..\\sampleshader.hlsl",
                                        GENERIC_READ, 0, 0,
@@ -666,19 +697,12 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
                                        FILE_ATTRIBUTE_NORMAL,
                                        0);
         
-        ReadFile(ShaderCodeHandle, &ShaderCode, 1024, 0, 0);
+        ReadFile(ShaderCodeHandle, &ShaderCode, ShaderCodeSize, 0, 0);
         CloseHandle(ShaderCodeHandle);
         
-        Result = D3DCompile(ShaderCode,
-                            1024,
-                            0,
-                            0, 0,
-                            "VS_Main",
-                            "vs_4_0",
-                            ShaderFlags,
-                            0,
-                            &VertexShaderBuffer,
-                            &ErrorBuffer);
+        Result = D3DCompile(ShaderCode, ShaderCodeSize,
+                            0, 0, 0, "VS_Main", "vs_4_0", ShaderFlags, 0,
+                            &VertexShaderBuffer, &ErrorBuffer);
         
         if(FAILED(Result))
         {
@@ -736,7 +760,7 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         ID3DBlob* PixelShaderBuffer = 0;
         
         Result = D3DCompile(ShaderCode,
-                            1024,
+                            4096,
                             0,
                             0, 0,
                             "PS_Main",
@@ -768,23 +792,24 @@ void PhysicsSimulation(app_state *AppState, app_input *Input)
         }
     }
     
+    // NOTE(MIGUEL): Sim Initialization
+    AppState->EntityCount    =   0;
+    AppState->EntityMaxCount = 256;
     
-    for(u32 EntityIndex; EntityIndex < 20; EntityIndex++)
+    for(u32 EntityIndex = 0; EntityIndex < 2; EntityIndex++)
     {
         
         if(AppState->EntityCount < AppState->EntityMaxCount)
         {
-            entity Entity = AppState->Entities[AppState->EntityCount++];
+            entity *Entity = &AppState->Entities[AppState->EntityCount++];
             
-            Entity.Pos.x = -0.5f + ( 0.1f * EntityIndex);
-            Entity.Pos.y =  0.5f + (-0.1f * EntityIndex);
-            Entity.Pos.z =  0.0f;
+            Entity->Pos.x =  0.0f + (20 * EntityIndex);
+            Entity->Pos.y =  0.0f + (20 * EntityIndex);
+            Entity->Pos.z =  0.0f;
             
-#if 0
-            Entity.Acc.x = ;
-            Entity.Acc.y = ;
-            Entity.Acc.z = ;
-#endif
+            Entity->Acc.x = 1.0f;
+            Entity->Acc.y = 1.0f;
+            Entity->Acc.z = 0.0f;
         }
     };
     
@@ -901,7 +926,7 @@ void WinMainCRTStartup()
     // NOTE(MIGUEL): Device is created for processing rasterization
     if(D3D11Init(Window, &AppState->Renderer))
     {
-        PhysicsSimulation(AppState, &Input);
+        PhysicsSim(AppState, &Input);
     }
     
     
