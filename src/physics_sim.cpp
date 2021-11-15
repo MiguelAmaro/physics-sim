@@ -537,7 +537,7 @@ Update(app_state *AppState)
             for(u32 TestEntityIndex = 0; TestEntityIndex < AppState->EntityCount;
                 TestEntityIndex++, TestEntity++)
             {
-                if(Entity != TestEntity)
+                if(Entity != TestEntity && TestEntity->Type == Entity_Wall)
                 {
                     
                     rect_v2f32 TestEntityBounds = rect_v2f32CenteredDim(TestEntity->Dim.xy);
@@ -919,10 +919,21 @@ void PhysicsSim(app_state *AppState, app_input *Input)
             {
                 Entity = &AppState->Entities[AppState->EntityCount++];
                 
-                u32 SeedX = (timeGetTime() + 4 * (AppState->EntityCount << 3)) << 8;
-                u32 SeedY = (timeGetTime() * (AppState->EntityCount << 23)) << 3;
-                Entity->Pos.x =  0.0f + (20 * EntityIndex);
-                Entity->Pos.y =  0.0f + (20 * EntityIndex);
+                //SYSTEMTIME SysTime;
+                //GetSystemTime(&SysTime);
+                
+                LARGE_INTEGER Counter;
+                QueryPerformanceCounter(&Counter);
+                
+                u32 Random = Counter.LowPart;
+                
+                u32 SeedX = (Random + 4 * (EntityIndex << 3)) << 8;
+                u32 SeedY = (Random * (AppState->EntityCount << 23)) << 3;
+                f32 X = NormalizedVectorTable[SeedX % VectorTableSize];
+                f32 Y = NormalizedVectorTable[SeedY % VectorTableSize];
+                
+                Entity->Pos.x =  (200.0f + EntityIndex) * X;
+                Entity->Pos.y =  (200.0f + EntityIndex) * Y;
                 Entity->Pos.z =  0.0f;
                 
                 Entity->Dim.x = 20.0f;
@@ -933,8 +944,8 @@ void PhysicsSim(app_state *AppState, app_input *Input)
                 Entity->Acc.y = 0.0f;
                 Entity->Acc.z = 0.0f;
                 
-                Entity->Vel.x = NormalizedVectorTable[SeedX % VectorTableSize];
-                Entity->Vel.y = NormalizedVectorTable[SeedY % VectorTableSize];
+                Entity->Vel.x = X;
+                Entity->Vel.y = Y;
                 Entity->Vel.z = 0.0f;
                 Entity->Type = Entity_Moves;
             }
