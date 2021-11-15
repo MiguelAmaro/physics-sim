@@ -19,18 +19,21 @@
 
 //-/ TODO & NOTE
 /// Implementation Objectives
-// TODO(MIGUEL): Wall genaration & and enclose window with walls
-//               instead checkin pos agains centered window half dim
-// TODO(MIGUEL): Implende simple collisiont detection
-// TODO(MIGUEL): Rotatate entity to match vel vector direction
-// TODO(MIGUEL): More Entities[DONE!]
 // TODO(MIGUEL): Make entities colide with each other
 // TODO(MIGUEL): Hotswapables sim code
 // TODO(MIGUEL): Hotswapable shader code
+// TODO(MIGUEL): Rotatate entity to match vel vector direction
 
 /// Learning Objectives
 // TODO(MIGUEL): CH 3 [Beginning DirectX 11 Game Programming] 
 // TODO(MIGUEL): CH 4 [Physics Modeling for Game Programmers] 
+
+
+// IMPLEMENTED
+// TODO(MIGUEL): More Entities[DONE!]
+// TODO(MIGUEL): Implende simple collisiont detection [DONE!]
+// TODO(MIGUEL): Wall genaration & and enclose window with walls
+//               instead checkin pos agains centered window half dim [DONE!]
 
 //-/ MACROS
 
@@ -400,6 +403,168 @@ ProcessKeyboardMessage(button_state *NewState, b32 IsDown)
     return;
 }
 
+// NOTE(MIGUEL): HOTSWAPPING SHADERCODE
+#if 0
+
+// NOTE(MIGUEL): Goes in main loop
+// NOTE(MIGUEL): From Drone Controller
+WIN32_FIND_DATAA UpdatedShaderFileInfo = {0};
+
+
+FindFirstFileA("../res/shaders/throttle.glsl",
+               &UpdatedShaderFileInfo);
+
+if((UpdatedShaderFileInfo.ftLastWriteTime.dwLowDateTime !=
+    CurrentShaderFileInfo.ftLastWriteTime.dwLowDateTime) ||
+   (UpdatedShaderFileInfo.ftLastWriteTime.dwHighDateTime !=
+    CurrentShaderFileInfo.ftLastWriteTime.dwHighDateTime)) 
+{
+    u32 NewShader = 0;
+    
+    if(InUseShaderFileA)
+    {
+        
+        CopyFile("../res/shaders/throttle.glsl",
+                 "../res/shaders/throttle_inuse_b.glsl", 0);
+        
+        
+        size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 32) |
+                                 (UpdatedShaderFileInfo.nFileSizeLow));
+        
+        InUseShaderFileB = CreateFileA("../res/shaders/throttle_inuse_b.glsl",
+                                       GENERIC_READ, 0, 0,
+                                       OPEN_EXISTING,
+                                       FILE_FLAG_DELETE_ON_CLOSE,
+                                       0);
+        
+        if(OpenGL_LoadShaderFromSource(&NewShader, "../res/shaders/throttle_inuse_b.glsl",
+                                       InUseShaderFileB, ShaderFileSize))
+        {
+            glDeleteShader(sprite_render_info.shader);
+            sprite_render_info.shader = NewShader;
+        }
+        
+        CloseHandle(InUseShaderFileA);
+        InUseShaderFileA = 0;
+        
+        CurrentShaderFileInfo.ftLastWriteTime =
+            UpdatedShaderFileInfo.ftLastWriteTime;
+    }
+    else if(InUseShaderFileB)
+    {
+        
+        CopyFile("../res/shaders/throttle.glsl",
+                 "../res/shaders/throttle_inuse_a.glsl", 0);
+        
+        
+        size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 32) |
+                                 (UpdatedShaderFileInfo.nFileSizeLow));
+        
+        InUseShaderFileA = CreateFileA("../res/shaders/throttle_inuse_a.glsl",
+                                       GENERIC_READ, 0, 0,
+                                       OPEN_EXISTING,
+                                       FILE_FLAG_DELETE_ON_CLOSE,
+                                       0);
+        
+        if(OpenGL_LoadShaderFromSource(&NewShader, "../res/shaders/throttle_inuse_a.glsl",
+                                       InUseShaderFileA, ShaderFileSize))
+        {
+            glDeleteShader(sprite_render_info.shader);
+            sprite_render_info.shader = NewShader;
+        }
+        
+        CloseHandle(InUseShaderFileB);
+        InUseShaderFileB = 0;
+        
+        CurrentShaderFileInfo.ftLastWriteTime = UpdatedShaderFileInfo.ftLastWriteTime;
+    }
+}
+
+#endif
+
+// NOTE(MIGUEL): HOTSWAPPING UPDATECODE
+#if 0
+static FILETIME
+win32_GetLastWriteTime(u8 *FileName)
+{
+    FILETIME LastWriteTime = { 0 };
+    
+    WIN32_FILE_ATTRIBUTE_DATA file_info;
+    
+    if(GetFileAttributesEx(FileName, GetFileExInfoStandard, &FileInfo))
+    {
+        LastWriteTime = file_info.ftLastWriteTime;
+    }
+    
+    return LastWriteTime;
+}
+
+
+
+#define SIM_UPDATE( name) void name(app_memory *app_memory)
+typedef SIM_UPDATE(SIM_Update);
+SIM_UPDATE(SIMUpdateStub)
+{ return; }
+
+
+typedef struct win32_game_code win32_game_code;
+struct win32_game_code
+{
+    HMODULE SGE_DLL   ;
+    SIM_Update          *Update;
+    b32                 IsValid      ;
+    FILETIME            DLLLastWriteTime;
+};
+
+
+static win32_sim_code
+win32_HotLoadSimCode(u8 *SourceDLLName, u8 *TempDLLName, u8 *LockedFileName)
+{
+    win32_simcode Result = { 0 };
+    
+    WIN32_FILE_ATTRIBUTE_DATA Ignored;
+    if(!GetFileAttributesEx(LockedFileName, GetFileExInfoStandard, &Ignored))
+    {
+        result.DLLLastWriteTime = win32_GetLastWriteTime(SourceDLLName);
+        
+        CopyFile(SourceDLLName, TempDLLName, FALSE);
+        result.SGE_DLL = LoadLibraryA(temp_dll_name);
+        
+        if(Result.SIM_DLL)
+        {
+            Result.update = (SIM_Update *)GetProcAddress(result.SGE_DLL, "Update");
+            
+            Result.IsValid = (Result.update);
+        }
+    }
+    if(!(result.is_valid))
+    {
+        result.init   = 0;
+        result.update = 0;
+        result.get_sound_samples = 0;
+    }
+    
+    return result;
+}
+
+
+internal void
+win32_HotUnloadSimCode(win32_sim_code *Sim)
+{
+    if(Sim)
+    {
+        FreeLibrary(game->SI_DLL);
+    }
+    
+    game->is_valid = false;
+    game->init     = 0;
+    game->update   = 0;
+    game->get_sound_samples = 0;
+    
+    return;
+}
+#endif
+
 void
 ProcessPendingMessages(app_input *Input)
 {
@@ -501,6 +666,39 @@ ProcessPendingMessages(app_input *Input)
     return;
 }
 
+#define MAXIMUM(a, b) ((a < b) ? (a) : (b))
+
+static b32 Intersects(f32 *NearestNormalizedCollisionPoint,
+                      f32 WallA     ,
+                      f32 RelPosA   , f32 RelPosB,
+                      f32 PosDeltaA , f32 PosDeltaB,
+                      f32 MinB      , f32 MaxB)
+{
+    b32 Result    = 0;
+    f32 T_Epsilon = 0.0001f;
+    
+    if(PosDeltaA != 0.0f)
+    {
+        f32 NormalizedCollisionPoint = (WallA - RelPosA) / PosDeltaA;
+        f32 PointOfCollisionB        = RelPosB + (PosDeltaB * NormalizedCollisionPoint);
+        
+        if((NormalizedCollisionPoint >= 0.0f) &&
+           (*NearestNormalizedCollisionPoint > NormalizedCollisionPoint))
+        {
+            if((PointOfCollisionB >= MinB) && (PointOfCollisionB <= MaxB));
+            {
+                *NearestNormalizedCollisionPoint = MAXIMUM(0.0f,
+                                                           NormalizedCollisionPoint - T_Epsilon);
+                
+                Result = 1;
+            }
+            
+        }
+    }
+    
+    return Result;
+}
+
 void
 Update(app_state *AppState)
 {
@@ -512,7 +710,7 @@ Update(app_state *AppState)
     entity   *Entity   =  AppState->Entities;
     for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
     {
-        if(Entity->Type == Entity_Moves)
+        if(Entity->Type == Entity_Moves && Entity->Exists)
         {
             // NOTE(MIGUEL): Equations of motion
             
@@ -530,34 +728,96 @@ Update(app_state *AppState)
             v3f32 NormalizedVel = v3f32Normalize(Vel);
             Entity->EulerZ = ArcTan2(NormalizedVel.x, NormalizedVel.y);
             
-            v2f32 TestPos = (Entity->Pos + PosDelta).xy;
             entity *TestEntity = AppState->Entities;
             for(u32 TestEntityIndex = 0; TestEntityIndex < AppState->EntityCount;
                 TestEntityIndex++, TestEntity++)
             {
-                if(Entity != TestEntity && TestEntity->Type == Entity_Wall)
+                if(TestEntity != Entity &&
+                   //TestEntity->Type == Entity_Wall &&
+                   TestEntity->Exists)
                 {
+                    /// TEST ENTITY SPACE
+                    v2f32 EntityPos = Entity->Pos.xy - TestEntity->Pos.xy;
                     
-                    rect_v2f32 TestEntityBounds = rect_v2f32CenteredDim(TestEntity->Dim.xy);
-                    if(rect_v2f32IsInside(TestEntityBounds, TestPos))
+                    rect_v2f32 TestEntityBounds = rect_v2f32CenteredDim(TestEntity->Dim.xy) ;
+                    
+                    if(rect_v2f32IsInside(TestEntityBounds, EntityPos))
                     {
-                        Entity->Vel.x *= -1.0f;
-                        Entity->Vel.y *= -1.0f;
+                        Entity->Exists = false;
+                    }
+                    
+                    rect_v2f32 MinkowskiTestEntityBounds = { 0 };
+                    MinkowskiTestEntityBounds = rect_v2f32AddRadiusTo(TestEntityBounds,
+                                                                      Entity->Dim.xy);
+                    f32   NormalizedCollisionPoint = 1.0f;
+                    v3f32 WallNormal = { 0 };
+                    
+                    entity *HitEntity  = nullptr;
+                    // NOTE(MIGUEL): Intersection Test on all the walls of Test entity
+                    // LEFT WALL
+                    if(Intersects(&NormalizedCollisionPoint,
+                                  MinkowskiTestEntityBounds.min.x,
+                                  EntityPos.x, EntityPos.y,
+                                  PosDelta.x , PosDelta.y,
+                                  MinkowskiTestEntityBounds.min.y,
+                                  MinkowskiTestEntityBounds.max.y))
+                    {
+                        WallNormal = v3f32Init(-1.0f, 0.0f, 0.0f);
+                        HitEntity = TestEntity;
+                    }
+                    // RIGHT WALL
+                    if(Intersects(&NormalizedCollisionPoint,
+                                  MinkowskiTestEntityBounds.max.x,
+                                  EntityPos.x, EntityPos.y,
+                                  PosDelta.x , PosDelta.y,
+                                  MinkowskiTestEntityBounds.min.y,
+                                  MinkowskiTestEntityBounds.max.y))
+                    {
+                        WallNormal = v3f32Init(1.0f, 0.0f, 0.0f);
+                        HitEntity = TestEntity;
+                    }
+                    // TOP WALL
+                    if(Intersects(&NormalizedCollisionPoint,
+                                  MinkowskiTestEntityBounds.max.y,
+                                  EntityPos.y, EntityPos.x,
+                                  PosDelta.y , PosDelta.x,
+                                  MinkowskiTestEntityBounds.min.x,
+                                  MinkowskiTestEntityBounds.max.x))
+                    {
+                        WallNormal = v3f32Init(0.0f, 1.0f, 0.0f);
+                        HitEntity = TestEntity;
+                    }
+                    // BOTTOM WALL
+                    if(Intersects(&NormalizedCollisionPoint,
+                                  MinkowskiTestEntityBounds.min.y,
+                                  EntityPos.y, EntityPos.x,
+                                  PosDelta.y , PosDelta.x,
+                                  MinkowskiTestEntityBounds.min.x,
+                                  MinkowskiTestEntityBounds.max.x))
+                    {
+                        WallNormal = v3f32Init(0.0f, -1.0f, 0.0f);
+                        HitEntity = TestEntity;
+                    }
+                    
+                    // NOTE(MIGUEL): Computes New Pos Delta On Collision
+                    if(HitEntity)
+                    {
+                        v3f32 NewVel = WallNormal;
+                        f32   VelDot = v3f32Inner(Entity->Vel, WallNormal);
+                        Entity->Vel -= NewVel * VelDot;
+                        Entity->Vel -= NewVel * VelDot;
                         
-                        // NOTE(MIGUEL): Find the wall
-                        if(TestPos.x)
-                        {
-                            
-                        }
                         
-                        PosDelta.x *= -1.0f;
-                        PosDelta.y *= -1.0f;
-                        PosDelta.z *= -1.0f;
+                        v3f32 NewPosDelta = WallNormal;
+                        f32   PosDeltaDot = v2f32Inner(PosDelta.xy, WallNormal.xy);
+                        PosDelta -= NewVel * PosDeltaDot;
+                        PosDelta -= NewVel * PosDeltaDot;
                     }
                 }
             }
             
             Entity->Pos += PosDelta;
+            
         }
     }
     
@@ -924,10 +1184,12 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         
         // NOTE(MIGUEL): Wall Entities
         
+#ifndef TEST
         entity *EntityWallLeft   = AppState->Entities + AppState->EntityCount++;
         entity *EntityWallRight  = AppState->Entities + AppState->EntityCount++;
-        entity *EntityWallTop    = AppState->Entities + AppState->EntityCount++;
         entity *EntityWallBottom = AppState->Entities + AppState->EntityCount++;
+#endif
+        entity *EntityWallTop    = AppState->Entities + AppState->EntityCount++;
         
         entity *Entity = nullptr;
         
@@ -935,7 +1197,7 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         
         f32 SpaceWidth  = 400.0f;
         f32 SpaceHeight = 400.0f;
-        
+#ifndef TEST
         Entity = EntityWallLeft;
         Entity->Dim.x = CommonWidth;
         Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
@@ -945,6 +1207,7 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         Entity->Pos.y = 0.0f;
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
+        Entity->Exists = true;
         
         Entity = EntityWallRight;
         Entity->Dim.x = CommonWidth;
@@ -955,7 +1218,8 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         Entity->Pos.y = 0.0f;
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
-        
+        Entity->Exists = true;
+#endif
         Entity = EntityWallTop;
         Entity->Dim.x = SpaceWidth + 0.0f;
         Entity->Dim.y = CommonWidth; 
@@ -965,7 +1229,9 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         Entity->Pos.y = 1.0f * (SpaceHeight / 2.0f) + (Entity->Dim.y / 2.0f);
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
+        Entity->Exists = true;
         
+#ifndef TEST
         Entity = EntityWallBottom;
         Entity->Dim.x = SpaceWidth + 0.0f;
         Entity->Dim.y = CommonWidth; 
@@ -975,11 +1241,12 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         Entity->Pos.y = -1.0f * (SpaceHeight / 2.0f) - (Entity->Dim.y / 2.0f);
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
-        
+        Entity->Exists = true;
+#endif
         
         // NOTE(MIGUEL): Moving Entities
         u32 VectorTableSize = ARRAYSIZE(NormalizedVectorTable);
-        for(u32 EntityIndex = 0; EntityIndex < 40; EntityIndex++)
+        for(u32 EntityIndex = 0; EntityIndex < 100; EntityIndex++)
         {
             
             if(AppState->EntityCount < AppState->EntityMaxCount)
@@ -999,8 +1266,8 @@ void PhysicsSim(app_state *AppState, app_input *Input)
                 f32 X = NormalizedVectorTable[SeedX % VectorTableSize];
                 f32 Y = NormalizedVectorTable[SeedY % VectorTableSize];
                 
-                Entity->Pos.x =  (200.0f + EntityIndex) * X;
-                Entity->Pos.y =  (200.0f + EntityIndex) * Y;
+                Entity->Pos.x =  (24.0f * EntityIndex);
+                Entity->Pos.y =  (24.0f * EntityIndex);
                 Entity->Pos.z =  0.0f;
                 
                 Entity->Dim.x = 20.0f;
@@ -1014,11 +1281,11 @@ void PhysicsSim(app_state *AppState, app_input *Input)
                 Entity->Vel.x = X;
                 Entity->Vel.y = Y;
                 Entity->Vel.z = 0.0f;
+                
                 Entity->Type = Entity_Moves;
+                Entity->Exists = true;
             }
         };
-        
-        
     }
     
     

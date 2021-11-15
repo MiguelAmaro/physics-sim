@@ -212,6 +212,56 @@ union m4f32
 //~ OPERATIORS & FUNCTIONS
 
 //- VECTOR 2D 
+v2f32 operator +(v2f32 A, v2f32 B)
+{
+    v2f32 Result = { 0 };
+    
+    Result.x = A.x + B.x;
+    Result.y = A.y + B.y;
+    
+    return Result;
+}
+
+
+v2f32 operator -(v2f32 A, v2f32 B)
+{
+    v2f32 Result = { 0 };
+    
+    Result.x = A.x - B.x;
+    Result.y = A.y - B.y;
+    
+    return Result;
+}
+
+
+v2f32 operator *(v2f32 A, f32 Scalar)
+{
+    v2f32 Result = { 0 };
+    
+    Result.x = A.x * Scalar;
+    Result.y = A.y * Scalar;
+    
+    return Result;
+}
+
+v2f32 operator *(f32 Scalar, v2f32 A)
+{
+    v2f32 Result = A * Scalar;
+    
+    return Result;
+}
+
+
+void operator +=(v2f32 &A, v2f32 B)
+{
+    v2f32 *Result = &A;
+    
+    Result->x = A.x + B.x;
+    Result->y = A.y + B.y;
+    
+    return;
+}
+
 
 v2f32 v2f32Init(f32 x, f32 y)
 {
@@ -223,6 +273,15 @@ v2f32 v2f32Init(f32 x, f32 y)
     return Result;
 }
 
+f32 v2f32Inner(v2f32 A, v2f32 B)
+{
+    f32 Result = 0.0f;
+    
+    Result = (A.x * B.x +
+              A.y * B.y);
+    
+    return Result;
+}
 
 //- VECTOR 3D 
 
@@ -278,6 +337,17 @@ void operator +=(v3f32 &A, v3f32 B)
     return;
 }
 
+void operator -=(v3f32 &A, v3f32 B)
+{
+    v3f32 *Result = &A;
+    
+    Result->x = A.x - B.x;
+    Result->y = A.y - B.y;
+    Result->z = A.z - B.z;
+    
+    return;
+}
+
 void operator *=(v3f32 &A, f32 Scalar)
 {
     v3f32 *Result = &A;
@@ -324,11 +394,11 @@ v3f32 v3f32Normalize(v3f32 A)
 {
     v3f32 Result = { 0.0f };
     
-    f32 Manitude = v3f32GetMagnitude(A);
+    f32 Magnitude = v3f32GetMagnitude(A);
     
-    Result = v3f32Init(A.x / Manitude,
-                       A.y / Manitude,
-                       A.z / Manitude);
+    Result = v3f32Init(A.x / Magnitude,
+                       A.y / Magnitude,
+                       A.z / Magnitude);
     
     return Result;
 }
@@ -383,6 +453,21 @@ rect_v2f32 rect_v2f32CenteredDim(v2f32 Dim)
     
     return Result;
 }
+
+rect_v2f32 rect_v2f32AddRadiusTo(rect_v2f32 Bounds, v2f32 Dim)
+{
+    rect_v2f32 Result = Bounds;
+    
+    v2f32 Radius = Dim * 0.5f;
+    
+    Result.min.x += -1.0f * Radius.x;
+    Result.min.y += -1.0f * Radius.y;
+    Result.max.x += Radius.x;
+    Result.max.y += Radius.y;
+    
+    return Result;
+}
+
 
 //- MATRIX 2D 
 static void
