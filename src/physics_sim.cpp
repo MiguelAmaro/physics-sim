@@ -95,24 +95,32 @@ struct renderer
     gpu_const_static ConstBufferStatic;
 };
 
+enum entity_type
+{
+    Entity_Wall,
+    Entity_Moves,
+};
+
 struct entity
 {
+    entity_type Type;
+    
     v3f32 Pos;
     v3f32 Vel;
     v3f32 Acc;
     
     v3f32 Dim; /// Unit: Meters
     
-    // Temp
-    f32 RotZ;
-    f32 SclX;
-    f32 SclY;
+    f32 EulerX;
+    f32 EulerY;
+    f32 EulerZ;
 };
 
 struct app_state
 {
-    f32      DeltaTimeMS;
-    f32      Time;
+    b32 IsInitialized;
+    f32 DeltaTimeMS;
+    f32 Time;
     
     renderer Renderer;
     
@@ -146,6 +154,8 @@ struct buffer
 //-/ GLOBALS
 
 win32_WindowDim g_WindowDim;
+b32             g_WindowResized;
+
 uint32_t g_Running = true;
 uint32_t g_Pause   = false;
 
@@ -318,6 +328,12 @@ static LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM WParam, LPA
         case WM_SIZE:
         {
             //PostThreadMessage(RenderThreadID, Message, WParam, LParam);
+            RECT WindowDim;
+            GetClientRect(Window, &WindowDim);
+            g_WindowDim.Width  = WindowDim.right  - WindowDim.left;
+            g_WindowDim.Height = WindowDim.bottom - WindowDim.top;
+            
+            g_WindowResized = true;
         } break;
         
         default:
@@ -354,6 +370,7 @@ static HWND CreateOutputWindow()
         
         RECT WindowDim = { 0, 0, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT };
         
+        // NOTE(MIGUEL): Is this correct? What about Client Rect?
         AdjustWindowRect(&WindowDim,
                          WS_OVERLAPPEDWINDOW,
                          false);
@@ -490,80 +507,86 @@ void
 Update(app_state *AppState)
 {
     renderer *Renderer = &AppState->Renderer;
-    entity   *Entity   =  AppState->Entities;
     
     static f32 RotZ = 0.0f;
     RotZ += 0.2f;
     
-    //v3f32Init(20.0f * Cosine(RotZ), 20.0f *   Sine(RotZ), 0.0f);
-    // NOTE(MIGUEL): Equations of motion
-    
-    f32   Speed = 0.25f;
-    v3f32 Drag  = {0.0f, 0.0f, 0.0f};
-    v3f32 Acc   = Entity->Acc * 1.0f;
-    v3f32 Vel   = Speed * Entity->Vel + Drag;
-    
-    v3f32 PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
-                      Vel * AppState->DeltaTimeMS);
-    
-    Entity->Vel = Acc * AppState->DeltaTimeMS + Entity->Vel;
-    v2f32 TestPos = (Entity->Pos + PosDelta).xy;
-    
-    rect_v2f32 WindowBounds = rect_v2f32CenteredDim(v2f32Init(g_WindowDim.Width,
-                                                              g_WindowDim.Height));
-    
-    
-    if(rect_v2f32IsOutside(WindowBounds, TestPos))
+    entity   *Entity   =  AppState->Entities;
+    for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
     {
-        Entity->Vel.x *= -1.0f;
-        Entity->Vel.y *= -1.0f;
-        
-        // NOTE(MIGUEL): Find the wall
-        if(TestPos.x)
+        if(Entity->Type == Entity_Moves)
         {
+            // NOTE(MIGUEL): Equations of motion
             
+            f32   Speed = 0.25f;
+            v3f32 Drag  = {0.0f, 0.0f, 0.0f};
+            v3f32 Acc   = Entity->Acc * 1.0f;
+            v3f32 Vel   = Speed * Entity->Vel + Drag;
+            
+            v3f32 PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
+                              Vel * AppState->DeltaTimeMS);
+            
+            Entity->Vel = Acc * AppState->DeltaTimeMS + Entity->Vel;
+            
+            
+            v3f32 NormalizedVel = v3f32Normalize(Vel);
+            Entity->EulerZ = ArcTan2(NormalizedVel.x, NormalizedVel.y);
+            
+            v2f32 TestPos = (Entity->Pos + PosDelta).xy;
+            entity *TestEntity = AppState->Entities;
+            for(u32 TestEntityIndex = 0; TestEntityIndex < AppState->EntityCount;
+                TestEntityIndex++, TestEntity++)
+            {
+                if(Entity != TestEntity)
+                {
+                    
+                    rect_v2f32 TestEntityBounds = rect_v2f32CenteredDim(TestEntity->Dim.xy);
+                    
+                    if(rect_v2f32IsInside(TestEntityBounds, TestPos))
+                    {
+                        Entity->Vel.x *= -1.0f;
+                        Entity->Vel.y *= -1.0f;
+                        
+                        // NOTE(MIGUEL): Find the wall
+                        if(TestPos.x)
+                        {
+                            
+                        }
+                        
+                        PosDelta.x *= -1.0f;
+                        PosDelta.y *= -1.0f;
+                        PosDelta.z *= -1.0f;
+                    }
+                }
+            }
+            
+            Entity->Pos += PosDelta;
         }
-        
-        PosDelta.x *= -1.0f;
-        PosDelta.y *= -1.0f;
-        PosDelta.z *= -1.0f;
     }
     
-    Entity->Pos += PosDelta;
+    if(g_WindowResized || !AppState->IsInitialized)
+    {
+        // NOTE(MIGUEL): Low Update Frequency
+        m4f32 Proj = m4f32Orthographic(0.0f, g_WindowDim.Width, 0.0f, g_WindowDim.Height, 0.0f, 100.0f);
+        
+        AppState->Renderer.ConstBufferLow.Proj    = Proj;
+        
+        Renderer->Context->UpdateSubresource(Renderer->CBLow, 0, 0,
+                                             &Renderer->ConstBufferLow, 0, 0);
+        g_WindowResized = 0;
+    }
     
-    m4f32 Trans  = m4f32Translation(Entity->Pos);
-    m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, RotZ);
-    m4f32 Scale  = m4f32Scale   (g_WindowDim.Width  / 4.0f,
-                                 g_WindowDim.Height / 4.0f, 1.0f);
-    m4f32 World  = Scale * Trans;
-    
-    m4f32 View = m4f32Viewport(v2f32Init(g_WindowDim.Width, g_WindowDim.Height)); 
-    m4f32 Proj = m4f32Orthographic(0.0f, g_WindowDim.Width, 0.0f, g_WindowDim.Height, 0.0f, 100.0f);
-    
-    // NOTE(MIGUEL): This is only because this constant buffer isnt set to
-    //               dynamic.(UpdateSubresource() call)
-    // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
-    
-    // NOTE(MIGUEL): High Update Frequency
-    AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
-    AppState->Renderer.ConstBufferHigh.World  = World;
-    
-    Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
-                                         &Renderer->ConstBufferHigh, 0, 0);
-    
-    
-    // NOTE(MIGUEL): Low Update Frequency
-    AppState->Renderer.ConstBufferLow.Proj    = Proj;
-    
-    Renderer->Context->UpdateSubresource(Renderer->CBLow, 0, 0,
-                                         &Renderer->ConstBufferLow, 0, 0);
-    
-    
-    // NOTE(MIGUEL): No Update Frequency
-    AppState->Renderer.ConstBufferStatic.View = View;
-    
-    Renderer->Context->UpdateSubresource(Renderer->CBStatic, 0, 0,
-                                         &Renderer->ConstBufferStatic, 0, 0);
+    if(!AppState->IsInitialized)
+    {
+        // NOTE(MIGUEL): No Update Frequency
+        m4f32 View = m4f32Viewport(v2f32Init(g_WindowDim.Width, g_WindowDim.Height)); 
+        AppState->Renderer.ConstBufferStatic.View = View;
+        
+        Renderer->Context->UpdateSubresource(Renderer->CBStatic, 0, 0,
+                                             &Renderer->ConstBufferStatic, 0, 0);
+        
+        AppState->IsInitialized = 1;
+    }
     
     
     return;
@@ -591,24 +614,40 @@ Render(app_state *AppState)
         Renderer->Context->IASetInputLayout(Renderer->InputLayout);
         Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         
-        Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-        Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
-        Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBStatic);
-        Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
-        
-        Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
-        
-        
-        // NOTE(MIGUEL): Drawing Entities useing the Model set above
         entity *Entity = AppState->Entities;
-        
-        for(u32 EntityIndex = 0;
-            EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
+        for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
         {
-            // NOTE(MIGUEL): I think this will be useful for instancing.
-        };
+            //if(Entity->Type == Entity_Moves)
+            {
+                // NOTE(MIGUEL): High Update Frequency
+                m4f32 Trans  = m4f32Translation(Entity->Pos);
+                m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, Entity->EulerZ);
+                m4f32 Scale  = m4f32Scale   (Entity->Dim.x,
+                                             Entity->Dim.y, 1.0f);
+                m4f32 World  = Rotate * Scale * Trans;
+                
+                
+                // NOTE(MIGUEL): This is only because this constant buffer isnt set to
+                //               dynamic.(UpdateSubresource() call)
+                // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
+                
+                AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
+                AppState->Renderer.ConstBufferHigh.World  = World;
+                
+                Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
+                                                     &Renderer->ConstBufferHigh, 0, 0);
+                
+                Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
+                Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
+                Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBStatic);
+                Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
+                
+                Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
+                
+                Renderer->Context->Draw(3, 0);
+            }
+        }
         
-        Renderer->Context->Draw(3, 0);
         
         Renderer->SwapChain->Present(0 , 0);
     }
@@ -616,20 +655,9 @@ Render(app_state *AppState)
     return;
 }
 
-void PhysicsSim(app_state *AppState, app_input *Input)
+void LoadAssets(renderer *Renderer)
 {
-    // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
-    //               system. (World moving around you when walking to simulate you looking around)
-    //               Active transformation does not change the coordinate system instead
-    //               it changes the vectors in the coordinate system. (This moving in the enviorment.)
-    //               Both can be used
-    
-    renderer *Renderer = &AppState->Renderer;
-    
     HRESULT Result;
-    
-    u32 VerticesSize = sizeof(vertex) * 3;
-    
     
     // NOTE(MIGUEL): Creating a Model. Ill Reuse this for all Entities.
     {
@@ -639,6 +667,8 @@ void PhysicsSim(app_state *AppState, app_input *Input)
             {v3f32Init( 0.5f, -0.5f, 0.5f), v4f32Init( 0.0f, 1.0f, 0.0f, 1.0f)},
             {v3f32Init(-0.5f, -0.5f, 0.5f), v4f32Init( 0.0f, 0.0f, 1.0f, 1.0f)},
         };
+        
+        u32 VerticesSize = sizeof(vertex) * 3;
         
         D3D11_BUFFER_DESC VertexDescriptor = { 0 };
         
@@ -806,50 +836,112 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         }
     }
     
-    // NOTE(MIGUEL): Sim Initialization
-    AppState->EntityCount    =   0;
-    AppState->EntityMaxCount = 256;
+    return;
+}
+
+void PhysicsSim(app_state *AppState, app_input *Input)
+{
     
+    LoadAssets(&AppState->Renderer);
     
-    // NOTE(MIGUEL): Entity Generation
+    // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
+    //               system. (World moving around you when walking to simulate you looking around)
+    //               Active transformation does not change the coordinate system instead
+    //               it changes the vectors in the coordinate system. (This moving in the enviorment.)
+    //               Both can be used
     
-    for(u32 EntityIndex = 0; EntityIndex < 1; EntityIndex++)
     {
+        // NOTE(MIGUEL): Sim Initialization
+        AppState->EntityCount    =   0;
+        AppState->EntityMaxCount = 256;
         
-        if(AppState->EntityCount < AppState->EntityMaxCount)
-        {
-            entity *Entity = &AppState->Entities[AppState->EntityCount++];
-            
-            Entity->Pos.x =  0.0f + (20 * EntityIndex);
-            Entity->Pos.y =  0.0f + (20 * EntityIndex);
-            Entity->Pos.z =  0.0f;
-            
-            Entity->Acc.x = 0.0f;
-            Entity->Acc.y = 0.0f;
-            Entity->Acc.z = 0.0f;
-            
-            Entity->Vel.x = 1.0f;
-            Entity->Vel.y = 1.0f;
-            Entity->Vel.z = 0.0f;
-        }
-    };
-    
-    
-    // NOTE(MIGUEL): Entity Generation
-    
-    for(u32 EntityIndex = 0; EntityIndex < 1; EntityIndex++)
-    {
+        // NOTE(MIGUEL): Entity Generation
         
-        if(AppState->EntityCount < AppState->EntityMaxCount)
+        
+        // NOTE(MIGUEL): Wall Entities
+        
+        entity *EntityWallLeft   = &AppState->Entities[AppState->EntityCount++];
+        entity *EntityWallRight  = &AppState->Entities[AppState->EntityCount++];
+        entity *EntityWallTop    = &AppState->Entities[AppState->EntityCount++];
+        entity *EntityWallBottom = &AppState->Entities[AppState->EntityCount++];
+        
+        entity *Entity = nullptr;
+        
+        f32 CommonWidth = 100.0f;
+        
+        Entity = EntityWallLeft;
+        Entity->Dim.x = CommonWidth;
+        Entity->Dim.y = g_WindowDim.Height + 40.0f ; 
+        Entity->Dim.z = CommonWidth;
+        
+        Entity->Pos.x = -1.0f * (g_WindowDim.Width / 2.0f) - (Entity->Dim.x / 2.0f);
+        Entity->Pos.y = 0.0f;
+        Entity->Pos.z = 0.0f;
+        Entity->Type = Entity_Wall;
+        
+        Entity = EntityWallRight;
+        Entity->Dim.x = CommonWidth;
+        Entity->Dim.y = g_WindowDim.Height + 40.0f ; 
+        Entity->Dim.z = CommonWidth;
+        
+        Entity->Pos.x = 1.0f * (g_WindowDim.Width / 2.0f) + (Entity->Dim.x / 2.0f);
+        Entity->Pos.y = 0.0f;
+        Entity->Pos.z = 0.0f;
+        Entity->Type = Entity_Wall;
+        
+        Entity = EntityWallTop;
+        Entity->Dim.x = g_WindowDim.Width + 0.0f;
+        Entity->Dim.y = CommonWidth; 
+        Entity->Dim.z = CommonWidth;
+        
+        Entity->Pos.x = 0.0f;
+        Entity->Pos.y = 1.0f * (g_WindowDim.Height / 2.0f) + (Entity->Dim.y / 2.0f);
+        Entity->Pos.z = 0.0f;
+        Entity->Type = Entity_Wall;
+        
+        Entity = EntityWallTop;
+        Entity->Dim.x = g_WindowDim.Width + 0.0f;
+        Entity->Dim.y = CommonWidth; 
+        Entity->Dim.z = CommonWidth;
+        
+        Entity->Pos.x = 0.0f;
+        Entity->Pos.y = -1.0f * (g_WindowDim.Height / 2.0f) - (Entity->Dim.y / 2.0f);
+        Entity->Pos.z = 0.0f;
+        Entity->Type = Entity_Wall;
+        
+        
+        // NOTE(MIGUEL): Moving Entities
+        u32 VectorTableSize = ARRAYSIZE(NormalizedVectorTable);
+        for(u32 EntityIndex = 0; EntityIndex < 40; EntityIndex++)
         {
-            entity *Entity = &AppState->Entities[AppState->EntityCount++];
             
-            Entity->Pos.x =  0.0f + (20 * EntityIndex);
-            Entity->Pos.y =  0.0f + (20 * EntityIndex);
-            Entity->Pos.z =  0.0f;
-            
-        }
-    };
+            if(AppState->EntityCount < AppState->EntityMaxCount)
+            {
+                Entity = &AppState->Entities[AppState->EntityCount++];
+                
+                u32 SeedX = (timeGetTime() + 4 * (AppState->EntityCount << 3)) << 8;
+                u32 SeedY = (timeGetTime() * (AppState->EntityCount << 23)) << 3;
+                Entity->Pos.x =  0.0f + (20 * EntityIndex);
+                Entity->Pos.y =  0.0f + (20 * EntityIndex);
+                Entity->Pos.z =  0.0f;
+                
+                Entity->Dim.x = 20.0f;
+                Entity->Dim.y = 20.0f; 
+                Entity->Dim.z = 20.0f;
+                
+                Entity->Acc.x = 0.0f;
+                Entity->Acc.y = 0.0f;
+                Entity->Acc.z = 0.0f;
+                
+                Entity->Vel.x = NormalizedVectorTable[SeedX % VectorTableSize];
+                Entity->Vel.y = NormalizedVectorTable[SeedY % VectorTableSize];
+                Entity->Vel.z = 0.0f;
+                Entity->Type = Entity_Moves;
+            }
+        };
+        
+        
+    }
     
     
     b32 g_Pause = 0;

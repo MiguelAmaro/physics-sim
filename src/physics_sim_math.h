@@ -33,6 +33,52 @@ f32 Sine(f32 Radians)
     return Result;
 };
 
+//https://stackoverflow.com/questions/18187492/simd-vectorize-atan2-using-arm-neon-assembly?noredirect=1&lq=1
+//https://en.wikipedia.org/wiki/Approximation_theory#Chebyshev_approximation
+//https://stackoverflow.com/questions/11930594/calculate-atan2-without-std-functions-or-c99
+//http://dspguru.com/dsp/books/
+f32 ArcTan(f32 Value )
+{
+    // NOTE(MIGUEL): Uses Rational Approximation.
+    //               Better Alternative is Chebyshev Approximation??
+    static const u32 SignMask = 0x80000000;
+    static const f32 B        = 0.596227f;
+    
+    // Extract the sign Bit
+    u32 ux_s  = SignMask & (u32 &)Value;
+    
+    // Calculate the arctangent in the first quadrant
+    f32 Bx_a = ::fabs( B * Value);
+    f32 Num = Bx_a + Value * Value;
+    f32 Atan_1q = Num / ( 1.f + Bx_a + Num );
+    
+    // Restore the sign Bit
+    u32 Atan_2q = ux_s | (u32 &)Atan_1q;
+    return (f32 &)Atan_2q;
+}
+
+float ArcTan2( float y, float x )
+{
+    static const uint32_t sign_mask = 0x80000000;
+    static const float b = 0.596227f;
+    
+    // Extract the sign bits
+    uint32_t ux_s  = sign_mask & (uint32_t &)x;
+    uint32_t uy_s  = sign_mask & (uint32_t &)y;
+    
+    // Determine the quadrant offset
+    float q = (float)( ( ~ux_s & uy_s ) >> 29 | ux_s >> 30 ); 
+    
+    // Calculate the arctangent in the first quadrant
+    float bxy_a = ::fabs( b * x * y );
+    float num = bxy_a + y * y;
+    float atan_1q =  num / ( x * x + bxy_a + num );
+    
+    // Translate it to the proper quadrant
+    uint32_t uatan_2q = (ux_s ^ uy_s) | (uint32_t &)atan_1q;
+    return q + (float &)uatan_2q;
+} 
+
 f32 Square(f32 Value)
 {
     f32 Result = Value * Value;
@@ -265,6 +311,28 @@ f32 v3f32Inner(v3f32 A, v3f32 B)
     return Result;
 }
 
+f32 v3f32GetMagnitude(v3f32 A)
+{
+    f32 Result = 0.0f;
+    
+    Result = Root(v3f32Inner(A, A));
+    
+    return Result;
+}
+
+v3f32 v3f32Normalize(v3f32 A)
+{
+    v3f32 Result = { 0.0f };
+    
+    f32 Manitude = v3f32GetMagnitude(A);
+    
+    Result = v3f32Init(A.x / Manitude,
+                       A.y / Manitude,
+                       A.z / Manitude);
+    
+    return Result;
+}
+
 //- VECTOR 4D 
 v4f32 v4f32Init(f32 x, f32 y, f32 z, f32 w)
 {
@@ -288,6 +356,18 @@ b32 rect_v2f32IsOutside(rect_v2f32 Bounds, v2f32 Pos)
               Bounds.min.y > Pos.y ||
               Bounds.max.x < Pos.x ||
               Bounds.max.y < Pos.y);
+    
+    return Result;
+}
+
+b32 rect_v2f32IsInside(rect_v2f32 Bounds, v2f32 Pos)
+{
+    b32 Result = 1;
+    
+    Result = (Bounds.min.x < Pos.x &&
+              Bounds.min.y < Pos.y &&
+              Bounds.max.x > Pos.x &&
+              Bounds.max.y > Pos.y);
     
     return Result;
 }
