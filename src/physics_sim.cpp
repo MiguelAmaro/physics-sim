@@ -11,6 +11,7 @@
 #include <timeapi.h>
 
 #include "physics_sim_config.h"
+#include "physics_sim_assets.h"
 #include "physics_sim_types.h"
 #include "physics_sim_memory.h"
 #include "physics_sim_math.h"
@@ -22,7 +23,7 @@
 //               instead checkin pos agains centered window half dim
 // TODO(MIGUEL): Implende simple collisiont detection
 // TODO(MIGUEL): Rotatate entity to match vel vector direction
-// TODO(MIGUEL): More Entities
+// TODO(MIGUEL): More Entities[DONE!]
 // TODO(MIGUEL): Make entities colide with each other
 // TODO(MIGUEL): Hotswapables sim code
 // TODO(MIGUEL): Hotswapable shader code
@@ -84,7 +85,9 @@ struct renderer
     ID3D11VertexShader     *VertexShader;
     ID3D11PixelShader      *PixelShader;
     ID3D11InputLayout      *InputLayout;
-    ID3D11Buffer           *VertexBuffer;
+    ID3D11Buffer           *TriangleVBuffer;
+    ID3D11Buffer           *SquareIBuffer;
+    ID3D11Buffer           *SquareVBuffer;
     
     ID3D11Buffer *CBHigh;
     ID3D11Buffer *CBLow;
@@ -103,6 +106,8 @@ enum entity_type
 
 struct entity
 {
+    b32 Exists;
+    
     entity_type Type;
     
     v3f32 Pos;
@@ -128,13 +133,6 @@ struct app_state
     u32 EntityCount;
     u32 EntityMaxCount;
 };
-
-struct vertex
-{
-    v3f32 pos;
-    v4f32 color;
-};
-
 
 struct win32_WindowDim
 {
@@ -541,7 +539,6 @@ Update(app_state *AppState)
                 {
                     
                     rect_v2f32 TestEntityBounds = rect_v2f32CenteredDim(TestEntity->Dim.xy);
-                    
                     if(rect_v2f32IsInside(TestEntityBounds, TestPos))
                     {
                         Entity->Vel.x *= -1.0f;
@@ -606,45 +603,92 @@ Render(app_state *AppState)
         
         HRESULT Result;
         
-        // NOTE(MIGUEL): Sets the Model and How to Shade it
-        u32 Stride[] = {sizeof(vertex)};
-        u32 Offset[] = { 0 };
-        
-        Renderer->Context->IASetVertexBuffers(0, 1, &Renderer->VertexBuffer, Stride, Offset);
-        Renderer->Context->IASetInputLayout(Renderer->InputLayout);
-        Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        
         entity *Entity = AppState->Entities;
         for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
         {
-            //if(Entity->Type == Entity_Moves)
+            switch(Entity->Type)
             {
-                // NOTE(MIGUEL): High Update Frequency
-                m4f32 Trans  = m4f32Translation(Entity->Pos);
-                m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, Entity->EulerZ);
-                m4f32 Scale  = m4f32Scale   (Entity->Dim.x,
-                                             Entity->Dim.y, 1.0f);
-                m4f32 World  = Rotate * Scale * Trans;
-                
-                
-                // NOTE(MIGUEL): This is only because this constant buffer isnt set to
-                //               dynamic.(UpdateSubresource() call)
-                // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
-                
-                AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
-                AppState->Renderer.ConstBufferHigh.World  = World;
-                
-                Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
-                                                     &Renderer->ConstBufferHigh, 0, 0);
-                
-                Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-                Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
-                Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBStatic);
-                Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
-                
-                Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
-                
-                Renderer->Context->Draw(3, 0);
+                case Entity_Moves:
+                {
+                    // NOTE(MIGUEL): Sets the Model and How to Shade it
+                    u32 Stride[] = {sizeof(vertex)};
+                    u32 Offset[] = { 0 };
+                    
+                    Renderer->Context->IASetVertexBuffers(0, 1, &Renderer->TriangleVBuffer, Stride, Offset);
+                    Renderer->Context->IASetInputLayout(Renderer->InputLayout);
+                    Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    
+                    
+                    // NOTE(MIGUEL): High Update Frequency
+                    m4f32 Trans  = m4f32Translation(Entity->Pos);
+                    m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, Entity->EulerZ);
+                    m4f32 Scale  = m4f32Scale   (Entity->Dim.x,
+                                                 Entity->Dim.y, 1.0f);
+                    m4f32 World  = Rotate * Scale * Trans;
+                    
+                    
+                    // NOTE(MIGUEL): This is only because this constant buffer isnt set to
+                    //               dynamic.(UpdateSubresource() call)
+                    // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
+                    
+                    AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
+                    AppState->Renderer.ConstBufferHigh.World  = World;
+                    
+                    Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
+                                                         &Renderer->ConstBufferHigh, 0, 0);
+                    
+                    Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
+                    Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
+                    Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBStatic);
+                    Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
+                    
+                    Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
+                    
+                    Renderer->Context->Draw(3, 0);
+                } break;
+                case Entity_Wall:
+                {
+                    // NOTE(MIGUEL): Sets the Model and How to Shade it
+                    u32 Stride[] = {sizeof(vertex)};
+                    u32 Offset[] = { 0 };
+                    
+                    Renderer->Context->IASetVertexBuffers(0, 1, &Renderer->SquareVBuffer, Stride, Offset);
+                    Renderer->Context->IASetInputLayout(Renderer->InputLayout);
+                    Renderer->Context->IASetIndexBuffer(Renderer->SquareIBuffer, DXGI_FORMAT_R16_UINT, 0 );
+                    Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    
+                    
+                    // NOTE(MIGUEL): High Update Frequency
+                    m4f32 Trans  = m4f32Translation(Entity->Pos);
+                    m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, Entity->EulerZ);
+                    m4f32 Scale  = m4f32Scale   (Entity->Dim.x,
+                                                 Entity->Dim.y, 1.0f);
+                    m4f32 World  = Rotate * Scale * Trans;
+                    
+                    
+                    // NOTE(MIGUEL): This is only because this constant buffer isnt set to
+                    //               dynamic.(UpdateSubresource() call)
+                    // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
+                    
+                    AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
+                    AppState->Renderer.ConstBufferHigh.World  = World;
+                    
+                    Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
+                                                         &Renderer->ConstBufferHigh, 0, 0);
+                    
+                    Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
+                    Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
+                    Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBStatic);
+                    Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
+                    
+                    Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
+                    
+                    Renderer->Context->DrawIndexed(ARRAY_SIZE(SquareMeshIndices), 0, 0);
+                } break;
+                default:
+                {
+                    // NOTE(MIGUEL): JK
+                } break;
             }
         }
         
@@ -659,32 +703,53 @@ void LoadAssets(renderer *Renderer)
 {
     HRESULT Result;
     
-    // NOTE(MIGUEL): Creating a Model. Ill Reuse this for all Entities.
+    // NOTE(MIGUEL): MESH/MODEL STUFFFF
     {
-        vertex Vertices[] =
-        {
-            {v3f32Init( 0.0f,  0.5f, 0.5f), v4f32Init( 1.0f, 0.0f, 0.0f, 1.0f)},
-            {v3f32Init( 0.5f, -0.5f, 0.5f), v4f32Init( 0.0f, 1.0f, 0.0f, 1.0f)},
-            {v3f32Init(-0.5f, -0.5f, 0.5f), v4f32Init( 0.0f, 0.0f, 1.0f, 1.0f)},
-        };
+        /// TRIANGLE
+        D3D11_BUFFER_DESC TriangleVertDesc = { 0 };
+        TriangleVertDesc.Usage     = D3D11_USAGE_DEFAULT;
+        TriangleVertDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        TriangleVertDesc.ByteWidth = sizeof(vertex) * ARRAY_SIZE(TriangleMeshVerts);
         
-        u32 VerticesSize = sizeof(vertex) * 3;
+        D3D11_SUBRESOURCE_DATA TriangleVertData = { 0 };
+        TriangleVertData.pSysMem = TriangleMeshVerts;
         
-        D3D11_BUFFER_DESC VertexDescriptor = { 0 };
-        
-        VertexDescriptor.Usage     = D3D11_USAGE_DEFAULT;
-        VertexDescriptor.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        VertexDescriptor.ByteWidth = VerticesSize;
-        
-        D3D11_SUBRESOURCE_DATA ResourceData = { 0 };
-        ResourceData.pSysMem = Vertices;
-        
-        Result = Renderer->Device->CreateBuffer(&VertexDescriptor,
-                                                &ResourceData,
-                                                &Renderer->VertexBuffer );
+        Result = Renderer->Device->CreateBuffer(&TriangleVertDesc,
+                                                &TriangleVertData,
+                                                &Renderer->TriangleVBuffer );
         ASSERT(!FAILED(Result));
         
+        /// SQUARE
+        D3D11_BUFFER_DESC SquareVertDesc = { 0 };
+        SquareVertDesc.Usage     = D3D11_USAGE_DEFAULT;
+        SquareVertDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        SquareVertDesc.ByteWidth = sizeof(vertex) * ARRAY_SIZE(SquareMeshVerts);
         
+        D3D11_SUBRESOURCE_DATA SquareVertData = { 0 };
+        SquareVertData.pSysMem = SquareMeshVerts;
+        
+        Result = Renderer->Device->CreateBuffer(&SquareVertDesc,
+                                                &SquareVertData,
+                                                &Renderer->SquareVBuffer );
+        ASSERT(!FAILED(Result));
+        
+        D3D11_BUFFER_DESC SquareIndexDesc = { 0 };
+        SquareIndexDesc.Usage     = D3D11_USAGE_DEFAULT;
+        SquareIndexDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+        SquareIndexDesc.ByteWidth = sizeof(u16) * ARRAY_SIZE(SquareMeshIndices);
+        
+        D3D11_SUBRESOURCE_DATA SquareIndexData = { 0 };
+        SquareIndexData.pSysMem = SquareMeshIndices;
+        
+        Result = Renderer->Device->CreateBuffer(&SquareIndexDesc,
+                                                &SquareIndexData,
+                                                &Renderer->SquareIBuffer );
+        ASSERT(!FAILED(Result));
+    }
+    
+    
+    // NOTE(MIGUEL): SETTING GPU CONSTANTS FOR RENDERING
+    {
         // NOTE(MIGUEL): What is the difference between dynamic and default usage?
         //               Why cant i use updatesubresource using dynamic and how do
         //               i pass const buff data to the pipeline. 
@@ -718,10 +783,9 @@ void LoadAssets(renderer *Renderer)
                                                 &GPUConstantsResource,
                                                 &Renderer->CBStatic);
         ASSERT(!FAILED(Result));
-        
     }
     
-    // NOTE(MIGUEL): Ways to draw a Model
+    // NOTE(MIGUEL): SHADER STUFFFF
     {
         /// CREATE VERTEX SHADER
         ID3DBlob *VertexShaderBuffer;
@@ -804,7 +868,7 @@ void LoadAssets(renderer *Renderer)
         ID3DBlob* PixelShaderBuffer = 0;
         
         Result = D3DCompile(ShaderCode,
-                            4096,
+                            ShaderCodeSize,
                             0,
                             0, 0,
                             "PS_Main",
@@ -860,52 +924,55 @@ void PhysicsSim(app_state *AppState, app_input *Input)
         
         // NOTE(MIGUEL): Wall Entities
         
-        entity *EntityWallLeft   = &AppState->Entities[AppState->EntityCount++];
-        entity *EntityWallRight  = &AppState->Entities[AppState->EntityCount++];
-        entity *EntityWallTop    = &AppState->Entities[AppState->EntityCount++];
-        entity *EntityWallBottom = &AppState->Entities[AppState->EntityCount++];
+        entity *EntityWallLeft   = AppState->Entities + AppState->EntityCount++;
+        entity *EntityWallRight  = AppState->Entities + AppState->EntityCount++;
+        entity *EntityWallTop    = AppState->Entities + AppState->EntityCount++;
+        entity *EntityWallBottom = AppState->Entities + AppState->EntityCount++;
         
         entity *Entity = nullptr;
         
-        f32 CommonWidth = 100.0f;
+        f32 CommonWidth = 40.0f;
+        
+        f32 SpaceWidth  = 400.0f;
+        f32 SpaceHeight = 400.0f;
         
         Entity = EntityWallLeft;
         Entity->Dim.x = CommonWidth;
-        Entity->Dim.y = g_WindowDim.Height + 40.0f ; 
+        Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
         Entity->Dim.z = CommonWidth;
         
-        Entity->Pos.x = -1.0f * (g_WindowDim.Width / 2.0f) - (Entity->Dim.x / 2.0f);
+        Entity->Pos.x = -1.0f * (SpaceWidth / 2.0f) - (Entity->Dim.x / 2.0f);
         Entity->Pos.y = 0.0f;
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
         
         Entity = EntityWallRight;
         Entity->Dim.x = CommonWidth;
-        Entity->Dim.y = g_WindowDim.Height + 40.0f ; 
+        Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
         Entity->Dim.z = CommonWidth;
         
-        Entity->Pos.x = 1.0f * (g_WindowDim.Width / 2.0f) + (Entity->Dim.x / 2.0f);
+        Entity->Pos.x = 1.0f * (SpaceWidth / 2.0f) + (Entity->Dim.x / 2.0f);
         Entity->Pos.y = 0.0f;
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
         
         Entity = EntityWallTop;
-        Entity->Dim.x = g_WindowDim.Width + 0.0f;
+        Entity->Dim.x = SpaceWidth + 0.0f;
         Entity->Dim.y = CommonWidth; 
         Entity->Dim.z = CommonWidth;
         
         Entity->Pos.x = 0.0f;
-        Entity->Pos.y = 1.0f * (g_WindowDim.Height / 2.0f) + (Entity->Dim.y / 2.0f);
+        Entity->Pos.y = 1.0f * (SpaceHeight / 2.0f) + (Entity->Dim.y / 2.0f);
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
         
-        Entity = EntityWallTop;
-        Entity->Dim.x = g_WindowDim.Width + 0.0f;
+        Entity = EntityWallBottom;
+        Entity->Dim.x = SpaceWidth + 0.0f;
         Entity->Dim.y = CommonWidth; 
         Entity->Dim.z = CommonWidth;
         
         Entity->Pos.x = 0.0f;
-        Entity->Pos.y = -1.0f * (g_WindowDim.Height / 2.0f) - (Entity->Dim.y / 2.0f);
+        Entity->Pos.y = -1.0f * (SpaceHeight / 2.0f) - (Entity->Dim.y / 2.0f);
         Entity->Pos.z = 0.0f;
         Entity->Type = Entity_Wall;
         
@@ -917,7 +984,7 @@ void PhysicsSim(app_state *AppState, app_input *Input)
             
             if(AppState->EntityCount < AppState->EntityMaxCount)
             {
-                Entity = &AppState->Entities[AppState->EntityCount++];
+                Entity = AppState->Entities + AppState->EntityCount++;
                 
                 //SYSTEMTIME SysTime;
                 //GetSystemTime(&SysTime);
