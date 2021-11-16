@@ -11,6 +11,7 @@
 #include <timeapi.h>
 
 #include "physics_sim_config.h"
+#include "physics_sim_blah.h"
 #include "physics_sim_assets.h"
 #include "physics_sim_types.h"
 #include "physics_sim_memory.h"
@@ -20,7 +21,6 @@
 //-/ TODO & NOTE
 /// Implementation Objectives
 // TODO(MIGUEL): Make entities colide with each other
-// TODO(MIGUEL): Hotswapables sim code
 // TODO(MIGUEL): Hotswapable shader code
 // TODO(MIGUEL): Rotatate entity to match vel vector direction
 
@@ -30,6 +30,7 @@
 
 
 // IMPLEMENTED
+// TODO(MIGUEL): Hotswapables sim code [DONE!]
 // TODO(MIGUEL): More Entities[DONE!]
 // TODO(MIGUEL): Implende simple collisiont detection [DONE!]
 // TODO(MIGUEL): Wall genaration & and enclose window with walls
@@ -37,15 +38,17 @@
 
 //-/ MACROS
 
-#define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
+#define WIN32_STATE_FILE_NAME_COUNT (MAX_PATH)
 
-#define KILOBYTES(size) (         (size) * 1024LL)
-
-#define MEGABYTES(size) (KILOBYTES(size) * 1024LL)
-#define GIGABYTES(size) (MEGABYTES(size) * 1024LL)
-#define TERABYTES(size) (GIGABYTES(size) * 1024LL)
 
 //-/ TYPES
+
+struct win32_state
+{
+    char  ExeFileName[WIN32_STATE_FILE_NAME_COUNT];
+    char *OnePastLastExeFileNameSlash;
+};
+
 
 struct button_state
 {
@@ -101,42 +104,6 @@ struct renderer
     gpu_const_static ConstBufferStatic;
 };
 
-enum entity_type
-{
-    Entity_Wall,
-    Entity_Moves,
-};
-
-struct entity
-{
-    b32 Exists;
-    
-    entity_type Type;
-    
-    v3f32 Pos;
-    v3f32 Vel;
-    v3f32 Acc;
-    
-    v3f32 Dim; /// Unit: Meters
-    
-    f32 EulerX;
-    f32 EulerY;
-    f32 EulerZ;
-};
-
-struct app_state
-{
-    b32 IsInitialized;
-    f32 DeltaTimeMS;
-    f32 Time;
-    
-    renderer Renderer;
-    
-    entity Entities[256];
-    u32 EntityCount;
-    u32 EntityMaxCount;
-};
-
 struct win32_WindowDim
 {
     u32 Width;
@@ -154,6 +121,8 @@ struct buffer
 
 //-/ GLOBALS
 
+win32_state     g_winstate;
+renderer        g_Renderer;
 win32_WindowDim g_WindowDim;
 b32             g_WindowResized;
 
@@ -483,17 +452,19 @@ if((UpdatedShaderFileInfo.ftLastWriteTime.dwLowDateTime !=
 #endif
 
 // NOTE(MIGUEL): HOTSWAPPING UPDATECODE
-#if 0
+#if 1
 static FILETIME
-win32_GetLastWriteTime(u8 *FileName)
+win32_GetLastWriteTime(char *FileName)
 {
     FILETIME LastWriteTime = { 0 };
     
-    WIN32_FILE_ATTRIBUTE_DATA file_info;
+    WIN32_FILE_ATTRIBUTE_DATA FileInfo;
     
-    if(GetFileAttributesEx(FileName, GetFileExInfoStandard, &FileInfo))
+    if(GetFileAttributesEx((const char *)FileName,
+                           GetFileExInfoStandard,
+                           &FileInfo))
     {
-        LastWriteTime = file_info.ftLastWriteTime;
+        LastWriteTime = FileInfo.ftLastWriteTime;
     }
     
     return LastWriteTime;
@@ -501,65 +472,124 @@ win32_GetLastWriteTime(u8 *FileName)
 
 
 
-#define SIM_UPDATE( name) void name(app_memory *app_memory)
-typedef SIM_UPDATE(SIM_Update);
-SIM_UPDATE(SIMUpdateStub)
-{ return; }
 
-
-typedef struct win32_game_code win32_game_code;
-struct win32_game_code
+struct win32_sim_code
 {
-    HMODULE SGE_DLL   ;
-    SIM_Update          *Update;
-    b32                 IsValid      ;
-    FILETIME            DLLLastWriteTime;
+    HMODULE     SIM_DLL;
+    SIM_Update *Update;
+    b32         IsValid;
+    FILETIME    DLLLastWriteTime;
 };
 
 
-static win32_sim_code
-win32_HotLoadSimCode(u8 *SourceDLLName, u8 *TempDLLName, u8 *LockedFileName)
+static void
+win32_GetExeFileName(win32_state *State)
 {
-    win32_simcode Result = { 0 };
+    u32 FileNameSize = GetModuleFileNameA(0,
+                                          (LPSTR)State->ExeFileName,
+                                          sizeof(State->ExeFileName));
     
-    WIN32_FILE_ATTRIBUTE_DATA Ignored;
-    if(!GetFileAttributesEx(LockedFileName, GetFileExInfoStandard, &Ignored))
+    State->OnePastLastExeFileNameSlash = State->ExeFileName;
+    
+    for(char *Scan = (char *)State->ExeFileName; *Scan; ++Scan)
     {
-        result.DLLLastWriteTime = win32_GetLastWriteTime(SourceDLLName);
-        
-        CopyFile(SourceDLLName, TempDLLName, FALSE);
-        result.SGE_DLL = LoadLibraryA(temp_dll_name);
-        
-        if(Result.SIM_DLL)
+        if(*Scan == '\\')
         {
-            Result.update = (SIM_Update *)GetProcAddress(result.SGE_DLL, "Update");
-            
-            Result.IsValid = (Result.update);
+            State->OnePastLastExeFileNameSlash = Scan + 1;
         }
     }
-    if(!(result.is_valid))
+    
+    return;
+}
+
+static void
+S8Concat(size_t SourceACount, char *SourceA,
+         size_t SourceBCount, char *SourceB,
+         size_t DestCount   , char *Dest    )
+{
+    // TODO(MIGUEL): Dest bounds checking!
+    
+    for(u32 Index = 0; Index < SourceACount; Index++)
     {
-        result.init   = 0;
-        result.update = 0;
-        result.get_sound_samples = 0;
+        *Dest++ = *SourceA++;
     }
     
-    return result;
+    for(u32 Index = 0; Index < SourceBCount; Index++)
+    {
+        *Dest++ = *SourceB++;
+    }
+    
+    *Dest++ = 0;
 }
 
 
-internal void
+static u32
+S8Length(char *String)
+{
+    u32 Count = 0;
+    
+    while(*String++) { ++Count; }
+    
+    return Count;
+}
+
+
+static void
+win32_BuildExePathFileName(win32_state *State,
+                           char *FileName,
+                           int DestCount, char *Dest)
+{
+    S8Concat(State->OnePastLastExeFileNameSlash - State->ExeFileName,
+             State->ExeFileName,
+             S8Length(FileName), FileName,
+             DestCount, Dest);
+    
+    return;
+}
+
+
+static win32_sim_code
+win32_HotLoadSimCode(char *SourceDLLName, char *TempDLLName, char *LockedFileName)
+{
+    win32_sim_code Result = { 0 };
+    
+    WIN32_FILE_ATTRIBUTE_DATA Ignored;
+    if(!GetFileAttributesEx((const char *)LockedFileName,
+                            GetFileExInfoStandard,
+                            &Ignored))
+    {
+        Result.DLLLastWriteTime = win32_GetLastWriteTime(SourceDLLName);
+        
+        CopyFile((const char *)SourceDLLName,
+                 (const char *)TempDLLName, FALSE);
+        Result.SIM_DLL = LoadLibraryA((const char *)TempDLLName);
+        
+        if(Result.SIM_DLL)
+        {
+            Result.Update = (SIM_Update *)GetProcAddress(Result.SIM_DLL, "Update");
+            
+            Result.IsValid = (Result.Update != nullptr);
+        }
+    }
+    if(!(Result.IsValid))
+    {
+        Result.Update = 0;
+    }
+    
+    return Result;
+}
+
+
+static void
 win32_HotUnloadSimCode(win32_sim_code *Sim)
 {
     if(Sim)
     {
-        FreeLibrary(game->SI_DLL);
+        FreeLibrary(Sim->SIM_DLL);
     }
     
-    game->is_valid = false;
-    game->init     = 0;
-    game->update   = 0;
-    game->get_sound_samples = 0;
+    Sim->IsValid = false;
+    Sim->Update  = 0;
     
     return;
 }
@@ -666,193 +696,10 @@ ProcessPendingMessages(app_input *Input)
     return;
 }
 
-#define MAXIMUM(a, b) ((a < b) ? (a) : (b))
-
-static b32 Intersects(f32 *NearestNormalizedCollisionPoint,
-                      f32 WallA     ,
-                      f32 RelPosA   , f32 RelPosB,
-                      f32 PosDeltaA , f32 PosDeltaB,
-                      f32 MinB      , f32 MaxB)
-{
-    b32 Result    = 0;
-    f32 T_Epsilon = 0.0001f;
-    
-    if(PosDeltaA != 0.0f)
-    {
-        f32 NormalizedCollisionPoint = (WallA - RelPosA) / PosDeltaA;
-        f32 PointOfCollisionB        = RelPosB + (PosDeltaB * NormalizedCollisionPoint);
-        
-        if((NormalizedCollisionPoint >= 0.0f) &&
-           (*NearestNormalizedCollisionPoint > NormalizedCollisionPoint))
-        {
-            if((PointOfCollisionB >= MinB) && (PointOfCollisionB <= MaxB));
-            {
-                *NearestNormalizedCollisionPoint = MAXIMUM(0.0f,
-                                                           NormalizedCollisionPoint - T_Epsilon);
-                
-                Result = 1;
-            }
-            
-        }
-    }
-    
-    return Result;
-}
-
 void
-Update(app_state *AppState)
+Render(renderer *Renderer, app_memory *AppMemory)
 {
-    renderer *Renderer = &AppState->Renderer;
-    
-    static f32 RotZ = 0.0f;
-    RotZ += 0.2f;
-    
-    entity   *Entity   =  AppState->Entities;
-    for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
-    {
-        if(Entity->Type == Entity_Moves && Entity->Exists)
-        {
-            // NOTE(MIGUEL): Equations of motion
-            
-            f32   Speed = 0.25f;
-            v3f32 Drag  = {0.0f, 0.0f, 0.0f};
-            v3f32 Acc   = Entity->Acc * 1.0f;
-            v3f32 Vel   = Speed * Entity->Vel + Drag;
-            
-            v3f32 PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
-                              Vel * AppState->DeltaTimeMS);
-            
-            Entity->Vel = Acc * AppState->DeltaTimeMS + Entity->Vel;
-            
-            
-            v3f32 NormalizedVel = v3f32Normalize(Vel);
-            Entity->EulerZ = ArcTan2(NormalizedVel.x, NormalizedVel.y);
-            
-            entity *TestEntity = AppState->Entities;
-            for(u32 TestEntityIndex = 0; TestEntityIndex < AppState->EntityCount;
-                TestEntityIndex++, TestEntity++)
-            {
-                if(TestEntity != Entity &&
-                   //TestEntity->Type == Entity_Wall &&
-                   TestEntity->Exists)
-                {
-                    /// TEST ENTITY SPACE
-                    v2f32 EntityPos = Entity->Pos.xy - TestEntity->Pos.xy;
-                    
-                    rect_v2f32 TestEntityBounds = rect_v2f32CenteredDim(TestEntity->Dim.xy) ;
-                    
-                    if(rect_v2f32IsInside(TestEntityBounds, EntityPos))
-                    {
-                        Entity->Exists = false;
-                    }
-                    
-                    rect_v2f32 MinkowskiTestEntityBounds = { 0 };
-                    MinkowskiTestEntityBounds = rect_v2f32AddRadiusTo(TestEntityBounds,
-                                                                      Entity->Dim.xy);
-                    f32   NormalizedCollisionPoint = 1.0f;
-                    v3f32 WallNormal = { 0 };
-                    
-                    entity *HitEntity  = nullptr;
-                    // NOTE(MIGUEL): Intersection Test on all the walls of Test entity
-                    // LEFT WALL
-                    if(Intersects(&NormalizedCollisionPoint,
-                                  MinkowskiTestEntityBounds.min.x,
-                                  EntityPos.x, EntityPos.y,
-                                  PosDelta.x , PosDelta.y,
-                                  MinkowskiTestEntityBounds.min.y,
-                                  MinkowskiTestEntityBounds.max.y))
-                    {
-                        WallNormal = v3f32Init(-1.0f, 0.0f, 0.0f);
-                        HitEntity = TestEntity;
-                    }
-                    // RIGHT WALL
-                    if(Intersects(&NormalizedCollisionPoint,
-                                  MinkowskiTestEntityBounds.max.x,
-                                  EntityPos.x, EntityPos.y,
-                                  PosDelta.x , PosDelta.y,
-                                  MinkowskiTestEntityBounds.min.y,
-                                  MinkowskiTestEntityBounds.max.y))
-                    {
-                        WallNormal = v3f32Init(1.0f, 0.0f, 0.0f);
-                        HitEntity = TestEntity;
-                    }
-                    // TOP WALL
-                    if(Intersects(&NormalizedCollisionPoint,
-                                  MinkowskiTestEntityBounds.max.y,
-                                  EntityPos.y, EntityPos.x,
-                                  PosDelta.y , PosDelta.x,
-                                  MinkowskiTestEntityBounds.min.x,
-                                  MinkowskiTestEntityBounds.max.x))
-                    {
-                        WallNormal = v3f32Init(0.0f, 1.0f, 0.0f);
-                        HitEntity = TestEntity;
-                    }
-                    // BOTTOM WALL
-                    if(Intersects(&NormalizedCollisionPoint,
-                                  MinkowskiTestEntityBounds.min.y,
-                                  EntityPos.y, EntityPos.x,
-                                  PosDelta.y , PosDelta.x,
-                                  MinkowskiTestEntityBounds.min.x,
-                                  MinkowskiTestEntityBounds.max.x))
-                    {
-                        WallNormal = v3f32Init(0.0f, -1.0f, 0.0f);
-                        HitEntity = TestEntity;
-                    }
-                    
-                    // NOTE(MIGUEL): Computes New Pos Delta On Collision
-                    if(HitEntity)
-                    {
-                        v3f32 NewVel = WallNormal;
-                        f32   VelDot = v3f32Inner(Entity->Vel, WallNormal);
-                        Entity->Vel -= NewVel * VelDot;
-                        Entity->Vel -= NewVel * VelDot;
-                        
-                        
-                        v3f32 NewPosDelta = WallNormal;
-                        f32   PosDeltaDot = v2f32Inner(PosDelta.xy, WallNormal.xy);
-                        PosDelta -= NewVel * PosDeltaDot;
-                        PosDelta -= NewVel * PosDeltaDot;
-                    }
-                }
-            }
-            
-            Entity->Pos += PosDelta;
-            
-        }
-    }
-    
-    if(g_WindowResized || !AppState->IsInitialized)
-    {
-        // NOTE(MIGUEL): Low Update Frequency
-        m4f32 Proj = m4f32Orthographic(0.0f, g_WindowDim.Width, 0.0f, g_WindowDim.Height, 0.0f, 100.0f);
-        
-        AppState->Renderer.ConstBufferLow.Proj    = Proj;
-        
-        Renderer->Context->UpdateSubresource(Renderer->CBLow, 0, 0,
-                                             &Renderer->ConstBufferLow, 0, 0);
-        g_WindowResized = 0;
-    }
-    
-    if(!AppState->IsInitialized)
-    {
-        // NOTE(MIGUEL): No Update Frequency
-        m4f32 View = m4f32Viewport(v2f32Init(g_WindowDim.Width, g_WindowDim.Height)); 
-        AppState->Renderer.ConstBufferStatic.View = View;
-        
-        Renderer->Context->UpdateSubresource(Renderer->CBStatic, 0, 0,
-                                             &Renderer->ConstBufferStatic, 0, 0);
-        
-        AppState->IsInitialized = 1;
-    }
-    
-    
-    return;
-}
-
-void
-Render(app_state *AppState)
-{
-    renderer *Renderer = &AppState->Renderer;
+    app_state *AppState = (app_state *)AppMemory->PermanentStorage;
     
     if(Renderer->Context)
     {
@@ -862,6 +709,32 @@ Render(app_state *AppState)
         Renderer->Context->ClearRenderTargetView(Renderer->TargetView, ClearColor.c);
         
         HRESULT Result;
+        
+        
+        if(g_WindowResized || !AppState->IsInitialized)
+        {
+            // NOTE(MIGUEL): Low Update Frequency
+            m4f32 Proj = m4f32Orthographic(0.0f, g_WindowDim.Width, 0.0f, g_WindowDim.Height, 0.0f, 100.0f);
+            
+            Renderer->ConstBufferLow.Proj    = Proj;
+            
+            Renderer->Context->UpdateSubresource(Renderer->CBLow, 0, 0,
+                                                 &Renderer->ConstBufferLow, 0, 0);
+            g_WindowResized = 0;
+        }
+        
+        if(!AppState->IsInitialized)
+        {
+            // NOTE(MIGUEL): No Update Frequency
+            m4f32 View = m4f32Viewport(v2f32Init(g_WindowDim.Width, g_WindowDim.Height)); 
+            Renderer->ConstBufferStatic.View = View;
+            
+            Renderer->Context->UpdateSubresource(Renderer->CBStatic, 0, 0,
+                                                 &Renderer->ConstBufferStatic, 0, 0);
+            
+            AppState->IsInitialized = 1;
+        }
+        
         
         entity *Entity = AppState->Entities;
         for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
@@ -891,8 +764,8 @@ Render(app_state *AppState)
                     //               dynamic.(UpdateSubresource() call)
                     // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
                     
-                    AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
-                    AppState->Renderer.ConstBufferHigh.World  = World;
+                    Renderer->ConstBufferHigh.Time   = AppState->DeltaTimeMS;
+                    Renderer->ConstBufferHigh.World  = World;
                     
                     Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
                                                          &Renderer->ConstBufferHigh, 0, 0);
@@ -930,8 +803,9 @@ Render(app_state *AppState)
                     //               dynamic.(UpdateSubresource() call)
                     // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
                     
-                    AppState->Renderer.ConstBufferHigh.Time   = AppState->DeltaTimeMS;
-                    AppState->Renderer.ConstBufferHigh.World  = World;
+                    
+                    Renderer->ConstBufferHigh.Time   = AppState->DeltaTimeMS;
+                    Renderer->ConstBufferHigh.World  = World;
                     
                     Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
                                                          &Renderer->ConstBufferHigh, 0, 0);
@@ -1163,10 +1037,10 @@ void LoadAssets(renderer *Renderer)
     return;
 }
 
-void PhysicsSim(app_state *AppState, app_input *Input)
+void PhysicsSim(app_memory *AppMemory)
 {
     
-    LoadAssets(&AppState->Renderer);
+    LoadAssets(&g_Renderer);
     
     // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
     //               system. (World moving around you when walking to simulate you looking around)
@@ -1174,122 +1048,39 @@ void PhysicsSim(app_state *AppState, app_input *Input)
     //               it changes the vectors in the coordinate system. (This moving in the enviorment.)
     //               Both can be used
     
-    {
-        // NOTE(MIGUEL): Sim Initialization
-        AppState->EntityCount    =   0;
-        AppState->EntityMaxCount = 256;
-        
-        // NOTE(MIGUEL): Entity Generation
-        
-        
-        // NOTE(MIGUEL): Wall Entities
-        
-#ifndef TEST
-        entity *EntityWallLeft   = AppState->Entities + AppState->EntityCount++;
-        entity *EntityWallRight  = AppState->Entities + AppState->EntityCount++;
-        entity *EntityWallBottom = AppState->Entities + AppState->EntityCount++;
-#endif
-        entity *EntityWallTop    = AppState->Entities + AppState->EntityCount++;
-        
-        entity *Entity = nullptr;
-        
-        f32 CommonWidth = 40.0f;
-        
-        f32 SpaceWidth  = 400.0f;
-        f32 SpaceHeight = 400.0f;
-#ifndef TEST
-        Entity = EntityWallLeft;
-        Entity->Dim.x = CommonWidth;
-        Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
-        Entity->Dim.z = CommonWidth;
-        
-        Entity->Pos.x = -1.0f * (SpaceWidth / 2.0f) - (Entity->Dim.x / 2.0f);
-        Entity->Pos.y = 0.0f;
-        Entity->Pos.z = 0.0f;
-        Entity->Type = Entity_Wall;
-        Entity->Exists = true;
-        
-        Entity = EntityWallRight;
-        Entity->Dim.x = CommonWidth;
-        Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
-        Entity->Dim.z = CommonWidth;
-        
-        Entity->Pos.x = 1.0f * (SpaceWidth / 2.0f) + (Entity->Dim.x / 2.0f);
-        Entity->Pos.y = 0.0f;
-        Entity->Pos.z = 0.0f;
-        Entity->Type = Entity_Wall;
-        Entity->Exists = true;
-#endif
-        Entity = EntityWallTop;
-        Entity->Dim.x = SpaceWidth + 0.0f;
-        Entity->Dim.y = CommonWidth; 
-        Entity->Dim.z = CommonWidth;
-        
-        Entity->Pos.x = 0.0f;
-        Entity->Pos.y = 1.0f * (SpaceHeight / 2.0f) + (Entity->Dim.y / 2.0f);
-        Entity->Pos.z = 0.0f;
-        Entity->Type = Entity_Wall;
-        Entity->Exists = true;
-        
-#ifndef TEST
-        Entity = EntityWallBottom;
-        Entity->Dim.x = SpaceWidth + 0.0f;
-        Entity->Dim.y = CommonWidth; 
-        Entity->Dim.z = CommonWidth;
-        
-        Entity->Pos.x = 0.0f;
-        Entity->Pos.y = -1.0f * (SpaceHeight / 2.0f) - (Entity->Dim.y / 2.0f);
-        Entity->Pos.z = 0.0f;
-        Entity->Type = Entity_Wall;
-        Entity->Exists = true;
-#endif
-        
-        // NOTE(MIGUEL): Moving Entities
-        u32 VectorTableSize = ARRAYSIZE(NormalizedVectorTable);
-        for(u32 EntityIndex = 0; EntityIndex < 100; EntityIndex++)
-        {
-            
-            if(AppState->EntityCount < AppState->EntityMaxCount)
-            {
-                Entity = AppState->Entities + AppState->EntityCount++;
-                
-                //SYSTEMTIME SysTime;
-                //GetSystemTime(&SysTime);
-                
-                LARGE_INTEGER Counter;
-                QueryPerformanceCounter(&Counter);
-                
-                u32 Random = Counter.LowPart;
-                
-                u32 SeedX = (Random + 4 * (EntityIndex << 3)) << 8;
-                u32 SeedY = (Random * (AppState->EntityCount << 23)) << 3;
-                f32 X = NormalizedVectorTable[SeedX % VectorTableSize];
-                f32 Y = NormalizedVectorTable[SeedY % VectorTableSize];
-                
-                Entity->Pos.x =  (24.0f * EntityIndex);
-                Entity->Pos.y =  (24.0f * EntityIndex);
-                Entity->Pos.z =  0.0f;
-                
-                Entity->Dim.x = 20.0f;
-                Entity->Dim.y = 20.0f; 
-                Entity->Dim.z = 20.0f;
-                
-                Entity->Acc.x = 0.0f;
-                Entity->Acc.y = 0.0f;
-                Entity->Acc.z = 0.0f;
-                
-                Entity->Vel.x = X;
-                Entity->Vel.y = Y;
-                Entity->Vel.z = 0.0f;
-                
-                Entity->Type = Entity_Moves;
-                Entity->Exists = true;
-            }
-        };
-    }
+    
+    win32_GetExeFileName(&g_winstate);
+    
+    char SimCodeDLLFullPathSource[WIN32_STATE_FILE_NAME_COUNT];
+    win32_BuildExePathFileName(&g_winstate, "physics_sim_blah.dll",
+                               sizeof(SimCodeDLLFullPathSource), SimCodeDLLFullPathSource);
+    
+    char SimCodeDLLFullPathTemp  [WIN32_STATE_FILE_NAME_COUNT];
+    win32_BuildExePathFileName(&g_winstate, "physics_sim_blah_temp.dll",
+                               sizeof(SimCodeDLLFullPathTemp), SimCodeDLLFullPathTemp);
+    
+    char SimCodeDLLFullPathLock  [WIN32_STATE_FILE_NAME_COUNT];
+    win32_BuildExePathFileName(&g_winstate, "lock.tmp",
+                               sizeof(SimCodeDLLFullPathLock), SimCodeDLLFullPathLock);
     
     
-    b32 g_Pause = 0;
+    
+    app_input Input;
+    
+#if 0
+    // NOTE(MIGUEL): NOT IN USE
+    memory_arena RenderArena = { 0 };
+    
+    MemoryArenaInit(&RenderArena,
+                    AppMemory.TransientStorageSize,
+                    AppMemory.TransientStorage);
+    
+    memory_arena InputArena = { 0 };
+    
+    MemoryArenaInit(&InputArena,
+                    GIGABYTES(1),
+                    AppMemory.TransientStorage);
+#endif
     
     LARGE_INTEGER TickFrequency;
     LARGE_INTEGER WorkStartTick;
@@ -1301,18 +1092,40 @@ void PhysicsSim(app_state *AppState, app_input *Input)
     
     QueryPerformanceFrequency(&TickFrequency);
     
+    win32_sim_code SimCode;
+    
+    renderer *Renderer = &g_Renderer;
+    
+    
     while (g_Running)
     {
         // NOTE(MIGUEL): Start Timer
         QueryPerformanceCounter  (&WorkStartTick);
         
-        ProcessPendingMessages(Input);
+        ProcessPendingMessages(&Input);
         
         if(!g_Pause)
         {
-            Update(AppState);
             
-            Render(AppState);
+            FILETIME NewDLLWriteTime = win32_GetLastWriteTime(SimCodeDLLFullPathSource);
+            {
+                if(CompareFileTime(&NewDLLWriteTime, &SimCode.DLLLastWriteTime))
+                {
+                    win32_HotUnloadSimCode(&SimCode);
+                    SimCode = win32_HotLoadSimCode(SimCodeDLLFullPathSource,
+                                                   SimCodeDLLFullPathTemp,
+                                                   SimCodeDLLFullPathLock);
+                }
+            }
+            
+            if(SimCode.Update)
+            {
+                SimCode.Update(AppMemory);
+            }
+            
+            
+            
+            Render(&g_Renderer, AppMemory);
         }
         
         QueryPerformanceCounter  (&WorkEndTick);
@@ -1344,6 +1157,8 @@ void PhysicsSim(app_state *AppState, app_input *Input)
             MicrosElapsedWaiting.QuadPart += (WaitTickDelta.QuadPart / TickFrequency.QuadPart);
         }
         
+        // NOTE(MIGUEL): Fuck this is sloppy
+        app_state *AppState = (app_state *)AppMemory->PermanentStorage;
         AppState->DeltaTimeMS  = (f32)((MicrosElapsedWorking.QuadPart + MicrosElapsedWaiting.QuadPart) / 1000);
         AppState->Time        += AppState->DeltaTimeMS;
         
@@ -1377,34 +1192,15 @@ void WinMainCRTStartup()
                                           AppMemory.PermanentStorageSize);
         
     }
-    app_state *AppState = (app_state *)AppMemory.PermanentStorage;
-    
-    app_input Input;
-    
-#if 0
-    // NOTE(MIGUEL): NOT IN USE
-    memory_arena RenderArena = { 0 };
-    
-    MemoryArenaInit(&RenderArena,
-                    AppMemory.TransientStorageSize,
-                    AppMemory.TransientStorage);
-    
-    memory_arena InputArena = { 0 };
-    
-    MemoryArenaInit(&InputArena,
-                    GIGABYTES(1),
-                    AppMemory.TransientStorage);
-    
-#endif
     
     // NOTE(MIGUEL): Device is created for processing rasterization
-    if(D3D11Init(Window, &AppState->Renderer))
+    if(D3D11Init(Window, &g_Renderer))
     {
-        PhysicsSim(AppState, &Input);
+        PhysicsSim(&AppMemory);
     }
     
     
-    D3D11Release(&AppState->Renderer);
+    D3D11Release(&g_Renderer);
     
     ExitProcess(0);
     

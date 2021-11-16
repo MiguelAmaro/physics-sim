@@ -28,9 +28,18 @@ load_paths =
 
 commands =
 {
-    .build =
+    .build_exe =
     {
-		.win              = "build.bat",
+		.win              = "build.bat -exe",
+        .out              = "*compilation*",
+		.footer_panel     = true, 
+		.save_dirty_files = true, 
+		.cursor_at_end    = false,
+	},
+    
+    .build_dll =
+    {
+		.win              = "build.bat -dll",
         .out              = "*compilation*",
 		.footer_panel     = true, 
 		.save_dirty_files = true, 
@@ -64,7 +73,8 @@ commands =
 
 fkey_command = 
 {
-    .F1  = "build",
+    .F1  = "build_exe",
+    .F2  = "build_dll",
     
     .F12 = "run",
     .F11 = "debug",

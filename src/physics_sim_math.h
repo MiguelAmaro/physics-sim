@@ -6,6 +6,18 @@
 #include "physics_sim_types.h"
 #include "thirdparty\sse_mathisfun.h"
 
+
+//-/ MACROS
+
+#define KILOBYTES(size) (         (size) * 1024LL)
+
+#define MEGABYTES(size) (KILOBYTES(size) * 1024LL)
+#define GIGABYTES(size) (MEGABYTES(size) * 1024LL)
+#define TERABYTES(size) (GIGABYTES(size) * 1024LL)
+
+#define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
+#define MAXIMUM(a, b) ((a < b) ? (a) : (b))
+
 #define PI32 (3.141592653589793f)
 
 
@@ -33,6 +45,15 @@ f32 Sine(f32 Radians)
     return Result;
 };
 
+f32 Absolue(f32 Value)
+{
+    f32 Result = 0.0f;
+    
+    Result = (f32)(0x7Fffffff & (u32)Value);
+    
+    return Result;
+}
+
 //https://stackoverflow.com/questions/18187492/simd-vectorize-atan2-using-arm-neon-assembly?noredirect=1&lq=1
 //https://en.wikipedia.org/wiki/Approximation_theory#Chebyshev_approximation
 //https://stackoverflow.com/questions/11930594/calculate-atan2-without-std-functions-or-c99
@@ -48,7 +69,7 @@ f32 ArcTan(f32 Value )
     u32 ux_s  = SignMask & (u32 &)Value;
     
     // Calculate the arctangent in the first quadrant
-    f32 Bx_a = ::fabs( B * Value);
+    f32 Bx_a = Absolue( B * Value);
     f32 Num = Bx_a + Value * Value;
     f32 Atan_1q = Num / ( 1.f + Bx_a + Num );
     
@@ -70,7 +91,7 @@ float ArcTan2( float y, float x )
     float q = (float)( ( ~ux_s & uy_s ) >> 29 | ux_s >> 30 ); 
     
     // Calculate the arctangent in the first quadrant
-    float bxy_a = ::fabs( b * x * y );
+    float bxy_a = Absolue( b * x * y );
     float num = bxy_a + y * y;
     float atan_1q =  num / ( x * x + bxy_a + num );
     
