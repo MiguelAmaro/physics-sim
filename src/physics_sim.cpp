@@ -20,9 +20,13 @@
 
 //-/ TODO & NOTE
 /// Implementation Objectives
+// TODO(MIGUEL): Font rendering(look at refterm)
 // TODO(MIGUEL): Make entities colide with each other
 // TODO(MIGUEL): Rotatate entity to match vel vector direction
 // TODO(MIGUEL): Wavefront OBJ file parsing
+// TODO(MIGUEL): Get app timing correct
+// TODO(MIGUEL): Fix entity bugs on screen resize
+// TODO(MIGUEL): Write a profiler
 
 /// Learning Objectives
 // TODO(MIGUEL): CH 3 [Beginning DirectX 11 Game Programming] 

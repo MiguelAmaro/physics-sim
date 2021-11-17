@@ -36,9 +36,9 @@ PSInput VS_Main(VSInput Vertex)
     row_major matrix Transform = mul(World, Proj);
     
     float4 NewPos = mul(Vertex.Pos, Transform);
-    
+       
+    VertexShaderOutput.Color = float4(1.0f, 0.3f, 0.3f, 1.0f);
     VertexShaderOutput.Color = Vertex.Color;
-    VertexShaderOutput.Color = float4(1.0f, 1.0f, 1.0f, 1.0f);
     
     VertexShaderOutput.Pos   = NewPos;
     //VertexShaderOutput.Tex = Vertex.Tex;
