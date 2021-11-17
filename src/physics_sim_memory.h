@@ -32,11 +32,48 @@ struct memory_arena
     void   *BasePtr;
 };
 
+// NOTE(MIGUEL): Clearing large Amounts of data e.g ~4gb 
+//               results in a noticable slow down.
+void *MemorySetTo(int Value, void *DestInit, size_t Size)
+{
+    unsigned char *Dest = (unsigned char *)DestInit;
+    
+    while(Size--)
+        *Dest++ = (unsigned char)Value;
+    
+    return DestInit;
+}
+
+void *MemoryCopy(void *DestInit, void const *SourceInit, size_t Size)
+{
+    unsigned char *Source = (unsigned char *)SourceInit;
+    unsigned char *Dest   = (unsigned char *)DestInit;
+    
+    while(Size--)
+        *Dest++ = *Source++;
+    
+    return DestInit;
+}
+
 void
 MemoryArenaInit(memory_arena *Arena, size_t Size, void *BasePtr)
 {
     Arena->BasePtr = BasePtr;
     Arena->Size    = Size;
+    Arena->Used    = 0;
+    
+    return;
+}
+
+void
+MemoryArenaDiscard(memory_arena *Arena)
+{
+    // NOTE(MIGUEL): Clearing large Amounts of data e.g ~4gb 
+    //               results in a noticable slow down.
+    MemorySetTo(0, Arena->BasePtr, Arena->Used);
+    
+    Arena->BasePtr = 0;
+    Arena->Size    = 0;
     Arena->Used    = 0;
     
     return;
@@ -55,6 +92,7 @@ MemoryArenaPushBlock(memory_arena *Arena, size_t Size)
     
     return NewArenaPartitionAdress;
 }
+
 inline void
 MemoryArenaZeroBlock(memory_index size, void *address)
 {
@@ -67,6 +105,5 @@ MemoryArenaZeroBlock(memory_index size, void *address)
     
     return;
 }
-
 
 #endif //PHYSICS_SIM_MEMORY_H

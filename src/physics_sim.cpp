@@ -21,8 +21,8 @@
 //-/ TODO & NOTE
 /// Implementation Objectives
 // TODO(MIGUEL): Make entities colide with each other
-// TODO(MIGUEL): Hotswapable shader code
 // TODO(MIGUEL): Rotatate entity to match vel vector direction
+// TODO(MIGUEL): Wavefront OBJ file parsing
 
 /// Learning Objectives
 // TODO(MIGUEL): CH 3 [Beginning DirectX 11 Game Programming] 
@@ -30,6 +30,7 @@
 
 
 // IMPLEMENTED
+// TODO(MIGUEL): Hotswapable shader code[DONE!]
 // TODO(MIGUEL): Hotswapables sim code [DONE!]
 // TODO(MIGUEL): More Entities[DONE!]
 // TODO(MIGUEL): Implende simple collisiont detection [DONE!]
@@ -102,6 +103,12 @@ struct renderer
     gpu_const_high   ConstBufferHigh;
     gpu_const_low    ConstBufferLow;
     gpu_const_static ConstBufferStatic;
+    
+    WIN32_FIND_DATAA CurrentShaderFileInfo;
+    char             CurrentShaderPath[MAX_PATH];
+    HANDLE InUseShaderFileA;
+    HANDLE InUseShaderFileB;
+    
 };
 
 struct win32_WindowDim
@@ -374,80 +381,6 @@ ProcessKeyboardMessage(button_state *NewState, b32 IsDown)
 
 // NOTE(MIGUEL): HOTSWAPPING SHADERCODE
 #if 0
-
-// NOTE(MIGUEL): Goes in main loop
-// NOTE(MIGUEL): From Drone Controller
-WIN32_FIND_DATAA UpdatedShaderFileInfo = {0};
-
-
-FindFirstFileA("../res/shaders/throttle.glsl",
-               &UpdatedShaderFileInfo);
-
-if((UpdatedShaderFileInfo.ftLastWriteTime.dwLowDateTime !=
-    CurrentShaderFileInfo.ftLastWriteTime.dwLowDateTime) ||
-   (UpdatedShaderFileInfo.ftLastWriteTime.dwHighDateTime !=
-    CurrentShaderFileInfo.ftLastWriteTime.dwHighDateTime)) 
-{
-    u32 NewShader = 0;
-    
-    if(InUseShaderFileA)
-    {
-        
-        CopyFile("../res/shaders/throttle.glsl",
-                 "../res/shaders/throttle_inuse_b.glsl", 0);
-        
-        
-        size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 32) |
-                                 (UpdatedShaderFileInfo.nFileSizeLow));
-        
-        InUseShaderFileB = CreateFileA("../res/shaders/throttle_inuse_b.glsl",
-                                       GENERIC_READ, 0, 0,
-                                       OPEN_EXISTING,
-                                       FILE_FLAG_DELETE_ON_CLOSE,
-                                       0);
-        
-        if(OpenGL_LoadShaderFromSource(&NewShader, "../res/shaders/throttle_inuse_b.glsl",
-                                       InUseShaderFileB, ShaderFileSize))
-        {
-            glDeleteShader(sprite_render_info.shader);
-            sprite_render_info.shader = NewShader;
-        }
-        
-        CloseHandle(InUseShaderFileA);
-        InUseShaderFileA = 0;
-        
-        CurrentShaderFileInfo.ftLastWriteTime =
-            UpdatedShaderFileInfo.ftLastWriteTime;
-    }
-    else if(InUseShaderFileB)
-    {
-        
-        CopyFile("../res/shaders/throttle.glsl",
-                 "../res/shaders/throttle_inuse_a.glsl", 0);
-        
-        
-        size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 32) |
-                                 (UpdatedShaderFileInfo.nFileSizeLow));
-        
-        InUseShaderFileA = CreateFileA("../res/shaders/throttle_inuse_a.glsl",
-                                       GENERIC_READ, 0, 0,
-                                       OPEN_EXISTING,
-                                       FILE_FLAG_DELETE_ON_CLOSE,
-                                       0);
-        
-        if(OpenGL_LoadShaderFromSource(&NewShader, "../res/shaders/throttle_inuse_a.glsl",
-                                       InUseShaderFileA, ShaderFileSize))
-        {
-            glDeleteShader(sprite_render_info.shader);
-            sprite_render_info.shader = NewShader;
-        }
-        
-        CloseHandle(InUseShaderFileB);
-        InUseShaderFileB = 0;
-        
-        CurrentShaderFileInfo.ftLastWriteTime = UpdatedShaderFileInfo.ftLastWriteTime;
-    }
-}
 
 #endif
 
@@ -833,7 +766,130 @@ Render(renderer *Renderer, app_memory *AppMemory)
     return;
 }
 
-void LoadAssets(renderer *Renderer)
+
+// NOTE(MIGUEL): SHADER STUFFFF
+b32 LoadShader(renderer *Renderer,
+               ID3D11VertexShader **NewVertexShader,
+               ID3D11PixelShader  **NewPixelShader,
+               HANDLE ShaderCodeHandle,
+               u32 ShaderFileSize,
+               memory_arena *AssetLoadingArena)
+{
+    HRESULT Result;
+    
+    /// CREATE VERTEX SHADER
+    ID3DBlob *VertexShaderBuffer;
+    
+    DWORD ShaderFlags =  D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_DEBUG;
+    
+    ID3DBlob *ErrorBuffer;
+    
+    // NOTE(MIGUEL): D3DX11CompileFromFile is depricated
+    
+    u8 *ShaderCode = MEMORY_ARENA_PUSH_ARRAY(AssetLoadingArena,
+                                             ShaderFileSize, u8);
+    
+    ReadFile(ShaderCodeHandle, ShaderCode, ShaderFileSize, 0, 0);
+    CloseHandle(ShaderCodeHandle);
+    
+    Result = D3DCompile(ShaderCode, ShaderFileSize,
+                        0, 0, 0, "VS_Main", "vs_4_0", ShaderFlags, 0,
+                        &VertexShaderBuffer, &ErrorBuffer);
+    
+    if(FAILED(Result))
+    {
+        OutputDebugString((LPCSTR)ErrorBuffer->GetBufferPointer());
+        
+        if(ErrorBuffer != 0)
+        {
+            ErrorBuffer->Release();
+            
+            return false;
+        }
+    }
+    
+    Result = Renderer->Device->CreateVertexShader(VertexShaderBuffer->GetBufferPointer(),
+                                                  VertexShaderBuffer->GetBufferSize(), 0,
+                                                  NewVertexShader);
+    
+    if(FAILED(Result))
+    {
+        if(VertexShaderBuffer) VertexShaderBuffer->Release();
+        
+        return false;
+    }
+    
+    /// SET INPUT LAYOUT
+    D3D11_INPUT_ELEMENT_DESC VertexLayout[2] = { 0 };
+    
+    VertexLayout[0].SemanticName         = "POSITION";
+    VertexLayout[0].SemanticIndex        = 0;
+    VertexLayout[0].Format               = DXGI_FORMAT_R32G32B32_FLOAT;
+    VertexLayout[0].InputSlot            = 0;
+    VertexLayout[0].AlignedByteOffset    = 0;
+    VertexLayout[0].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
+    VertexLayout[0].InstanceDataStepRate = 0;
+    
+    VertexLayout[1].SemanticName         = "COLOR";
+    VertexLayout[1].SemanticIndex        = 0;
+    VertexLayout[1].Format               = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    VertexLayout[1].InputSlot            = 0;
+    VertexLayout[1].AlignedByteOffset    = D3D11_APPEND_ALIGNED_ELEMENT;
+    VertexLayout[1].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
+    VertexLayout[1].InstanceDataStepRate = 0;
+    
+    u32 TotalLayoutElements = ARRAYSIZE(VertexLayout);
+    
+    Result = Renderer->Device->CreateInputLayout(VertexLayout,
+                                                 TotalLayoutElements,
+                                                 VertexShaderBuffer->GetBufferPointer(),
+                                                 VertexShaderBuffer->GetBufferSize(),
+                                                 &Renderer->InputLayout);
+    
+    if(VertexShaderBuffer) VertexShaderBuffer->Release();
+    
+    /// CREATE PIXEL SHADER
+    
+    ID3DBlob* PixelShaderBuffer = 0;
+    
+    Result = D3DCompile(ShaderCode,
+                        ShaderFileSize,
+                        0,
+                        0, 0,
+                        "PS_Main",
+                        "ps_4_0",
+                        ShaderFlags,
+                        0,
+                        &PixelShaderBuffer,
+                        &ErrorBuffer);
+    
+    if(FAILED(Result))
+    {
+        if(ErrorBuffer != 0)
+        {
+            ErrorBuffer->Release();
+            
+            return false;
+        }
+    }
+    
+    Result = Renderer->Device->CreatePixelShader(PixelShaderBuffer->GetBufferPointer(),
+                                                 PixelShaderBuffer->GetBufferSize(), 0,
+                                                 NewPixelShader);
+    
+    
+    if(PixelShaderBuffer) PixelShaderBuffer->Release();
+    
+    if(FAILED(Result))
+    {
+        
+        return false;
+    }
+    
+    return true; 
+}
+
+void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
 {
     HRESULT Result;
     
@@ -919,118 +975,144 @@ void LoadAssets(renderer *Renderer)
         ASSERT(!FAILED(Result));
     }
     
-    // NOTE(MIGUEL): SHADER STUFFFF
+    WIN32_FIND_DATAA *CurrentShaderFileInfo = &Renderer->CurrentShaderFileInfo;
+    
+    memcpy(&Renderer->CurrentShaderPath,
+           "..\\src\\default.hlsl",
+           ARRAY_SIZE("..\\src\\default.hlsl"));
+    
+    char *ShaderPath = Renderer->CurrentShaderPath;
+    
+    
+    FindFirstFileA(ShaderPath,
+                   CurrentShaderFileInfo);
+    
+    HANDLE *ShaderCodeHandle = &Renderer->InUseShaderFileA;
+    
+    *ShaderCodeHandle = CreateFileA(ShaderPath,
+                                    GENERIC_READ, 0, 0,
+                                    OPEN_EXISTING,
+                                    FILE_ATTRIBUTE_NORMAL,
+                                    0);
+    
+    ASSERT(*ShaderCodeHandle);
+    
+    // NOTE(MIGUEL): Use an arena
+    
+    size_t ShaderFileSize = ((CurrentShaderFileInfo->nFileSizeHigh << 32) |
+                             (CurrentShaderFileInfo->nFileSizeLow));
+    
+    ID3D11VertexShader *NewVertexShader;
+    ID3D11PixelShader  *NewPixelShader;
+    ASSERT(LoadShader(Renderer,
+                      &NewVertexShader,
+                      &NewPixelShader,
+                      *ShaderCodeHandle,
+                      ShaderFileSize,
+                      AssetLoadingArena));
+    
+    Renderer->VertexShader = NewVertexShader;
+    Renderer->PixelShader  = NewPixelShader;
+    
+    return;
+}
+
+void D3D11HotLoadShader(renderer *Renderer, memory_arena *ShaderLoadingArena)
+{
+    WIN32_FIND_DATAA *CurrentShaderFileInfo = &Renderer->CurrentShaderFileInfo;
+    WIN32_FIND_DATAA  UpdatedShaderFileInfo = {0};
+    
+    char *CurrentShaderPath = Renderer->CurrentShaderPath;
+    FindFirstFileA("..\\src\\default"".hlsl",
+                   &UpdatedShaderFileInfo);
+    
+    
+    if((UpdatedShaderFileInfo.ftLastWriteTime.dwLowDateTime !=
+        CurrentShaderFileInfo->ftLastWriteTime.dwLowDateTime) ||
+       (UpdatedShaderFileInfo.ftLastWriteTime.dwHighDateTime !=
+        CurrentShaderFileInfo->ftLastWriteTime.dwHighDateTime)) 
     {
-        /// CREATE VERTEX SHADER
-        ID3DBlob *VertexShaderBuffer;
         
-        DWORD ShaderFlags =  D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_DEBUG;
+        ID3D11VertexShader *NewVertexShader = nullptr;
+        ID3D11PixelShader  *NewPixelShader  = nullptr;
         
-        ID3DBlob *ErrorBuffer;
-        
-        // NOTE(MIGUEL): D3DX11CompileFromFile is depricated
-        HANDLE ShaderCodeHandle;
-        u8     ShaderCode[4096] = { 0 };
-        u32    ShaderCodeSize = 4096;
-        
-        ShaderCodeHandle = CreateFileA("..\\src\\default.hlsl",
-                                       GENERIC_READ, 0, 0,
-                                       OPEN_EXISTING,
-                                       FILE_ATTRIBUTE_NORMAL,
-                                       0);
-        
-        ReadFile(ShaderCodeHandle, &ShaderCode, ShaderCodeSize, 0, 0);
-        CloseHandle(ShaderCodeHandle);
-        
-        Result = D3DCompile(ShaderCode, ShaderCodeSize,
-                            0, 0, 0, "VS_Main", "vs_4_0", ShaderFlags, 0,
-                            &VertexShaderBuffer, &ErrorBuffer);
-        
-        if(FAILED(Result))
+        if(Renderer->InUseShaderFileA)
         {
-            OutputDebugString((LPCSTR)ErrorBuffer->GetBufferPointer());
             
-            if(ErrorBuffer != 0)
-            {
-                ErrorBuffer->Release();
-                ASSERT(0);
-            }
-        }
-        
-        Result = Renderer->Device->CreateVertexShader(VertexShaderBuffer->GetBufferPointer(),
-                                                      VertexShaderBuffer->GetBufferSize(), 0,
-                                                      &Renderer->VertexShader);
-        
-        if(FAILED(Result))
-        {
-            if(VertexShaderBuffer) VertexShaderBuffer->Release();
+            char PostFix[] = "_inuse_b.hlsl";
             
-            ASSERT(0);
-        }
-        
-        /// SET INPUT LAYOUT
-        D3D11_INPUT_ELEMENT_DESC VertexLayout[2] = { 0 };
-        
-        VertexLayout[0].SemanticName         = "POSITION";
-        VertexLayout[0].SemanticIndex        = 0;
-        VertexLayout[0].Format               = DXGI_FORMAT_R32G32B32_FLOAT;
-        VertexLayout[0].InputSlot            = 0;
-        VertexLayout[0].AlignedByteOffset    = 0;
-        VertexLayout[0].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
-        VertexLayout[0].InstanceDataStepRate = 0;
-        
-        VertexLayout[1].SemanticName         = "COLOR";
-        VertexLayout[1].SemanticIndex        = 0;
-        VertexLayout[1].Format               = DXGI_FORMAT_R32G32B32A32_FLOAT;
-        VertexLayout[1].InputSlot            = 0;
-        VertexLayout[1].AlignedByteOffset    = D3D11_APPEND_ALIGNED_ELEMENT;
-        VertexLayout[1].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
-        VertexLayout[1].InstanceDataStepRate = 0;
-        
-        u32 TotalLayoutElements = ARRAYSIZE(VertexLayout);
-        
-        Result = Renderer->Device->CreateInputLayout(VertexLayout,
-                                                     TotalLayoutElements,
-                                                     VertexShaderBuffer->GetBufferPointer(),
-                                                     VertexShaderBuffer->GetBufferSize(),
-                                                     &Renderer->InputLayout);
-        
-        if(VertexShaderBuffer) VertexShaderBuffer->Release();
-        
-        /// CREATE PIXEL SHADER
-        
-        ID3DBlob* PixelShaderBuffer = 0;
-        
-        Result = D3DCompile(ShaderCode,
-                            ShaderCodeSize,
-                            0,
-                            0, 0,
-                            "PS_Main",
-                            "ps_4_0",
-                            ShaderFlags,
-                            0,
-                            &PixelShaderBuffer,
-                            &ErrorBuffer);
-        
-        if(FAILED(Result))
-        {
-            if(ErrorBuffer != 0)
+            CopyFile("..\\src\\default"".hlsl",
+                     "..\\src\\default""_inuse_b"".hlsl", 0);
+            
+            
+            size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 32) |
+                                     (UpdatedShaderFileInfo.nFileSizeLow));
+            
+            Renderer->InUseShaderFileB = CreateFileA("..\\src\\default""_inuse_b"".hlsl",
+                                                     GENERIC_READ, 0, 0,
+                                                     OPEN_EXISTING,
+                                                     FILE_FLAG_DELETE_ON_CLOSE,
+                                                     0);
+            
+            if(LoadShader(&g_Renderer,
+                          &NewVertexShader,
+                          &NewPixelShader,
+                          Renderer->InUseShaderFileB,
+                          ShaderFileSize,
+                          ShaderLoadingArena))
             {
-                ErrorBuffer->Release();
-                ASSERT(0);
+                Renderer->VertexShader->Release();
+                Renderer->PixelShader->Release();
+                
+                Renderer->VertexShader = NewVertexShader;
+                Renderer->PixelShader  = NewPixelShader;
+                
             }
+            
+            CloseHandle(Renderer->InUseShaderFileA);
+            Renderer->InUseShaderFileA = 0;
+            
+            CurrentShaderFileInfo->ftLastWriteTime =
+                UpdatedShaderFileInfo.ftLastWriteTime;
         }
-        
-        Result = Renderer->Device->CreatePixelShader(PixelShaderBuffer->GetBufferPointer(),
-                                                     PixelShaderBuffer->GetBufferSize(), 0,
-                                                     &Renderer->PixelShader);
-        
-        
-        if(PixelShaderBuffer) PixelShaderBuffer->Release();
-        
-        if(FAILED(Result))
+        else if(Renderer->InUseShaderFileB)
         {
-            ASSERT(0);
+            
+            CopyFile("..\\src\\default"".hlsl",
+                     "..\\src\\default""_inuse_a"".hlsl", 0);
+            
+            
+            size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 32) |
+                                     (UpdatedShaderFileInfo.nFileSizeLow));
+            
+            Renderer->InUseShaderFileA = CreateFileA("..\\src\\default""_inuse_a"".hlsl",
+                                                     GENERIC_READ, 0, 0,
+                                                     OPEN_EXISTING,
+                                                     FILE_FLAG_DELETE_ON_CLOSE,
+                                                     0);
+            
+            if(LoadShader(&g_Renderer,
+                          &NewVertexShader,
+                          &NewPixelShader,
+                          Renderer->InUseShaderFileA,
+                          ShaderFileSize,
+                          ShaderLoadingArena))
+            {
+                
+                Renderer->VertexShader->Release();
+                Renderer->PixelShader->Release();
+                
+                
+                Renderer->VertexShader = NewVertexShader;
+                Renderer->PixelShader  = NewPixelShader;
+                
+            }
+            
+            CloseHandle(Renderer->InUseShaderFileB);
+            Renderer->InUseShaderFileB = 0;
+            
+            CurrentShaderFileInfo->ftLastWriteTime = 
+                UpdatedShaderFileInfo.ftLastWriteTime;
         }
     }
     
@@ -1040,7 +1122,17 @@ void LoadAssets(renderer *Renderer)
 void PhysicsSim(app_memory *AppMemory)
 {
     
-    LoadAssets(&g_Renderer);
+    memory_arena AssetLoadingArena;
+    
+    MemoryArenaInit(&AssetLoadingArena,
+                    AppMemory->TransientStorageSize,
+                    AppMemory->TransientStorage);
+    
+    
+    LoadAssets(&g_Renderer, &AssetLoadingArena);
+    
+    MemoryArenaDiscard(&AssetLoadingArena);
+    
     
     // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
     //               system. (World moving around you when walking to simulate you looking around)
@@ -1064,23 +1156,8 @@ void PhysicsSim(app_memory *AppMemory)
                                sizeof(SimCodeDLLFullPathLock), SimCodeDLLFullPathLock);
     
     
-    
     app_input Input;
     
-#if 0
-    // NOTE(MIGUEL): NOT IN USE
-    memory_arena RenderArena = { 0 };
-    
-    MemoryArenaInit(&RenderArena,
-                    AppMemory.TransientStorageSize,
-                    AppMemory.TransientStorage);
-    
-    memory_arena InputArena = { 0 };
-    
-    MemoryArenaInit(&InputArena,
-                    GIGABYTES(1),
-                    AppMemory.TransientStorage);
-#endif
     
     LARGE_INTEGER TickFrequency;
     LARGE_INTEGER WorkStartTick;
@@ -1106,6 +1183,15 @@ void PhysicsSim(app_memory *AppMemory)
         
         if(!g_Pause)
         {
+            memory_arena ShaderLoadingArena;
+            
+            MemoryArenaInit(&ShaderLoadingArena,
+                            AppMemory->TransientStorageSize,
+                            AppMemory->TransientStorage);
+            
+            D3D11HotLoadShader(&g_Renderer, &ShaderLoadingArena);
+            
+            MemoryArenaDiscard(&ShaderLoadingArena);
             
             FILETIME NewDLLWriteTime = win32_GetLastWriteTime(SimCodeDLLFullPathSource);
             {
@@ -1210,6 +1296,8 @@ void WinMainCRTStartup()
 //~ CRT stuff
 extern "C" int _fltused = 0x9875;
 
+// NOTE(MIGUEL): Clearing large Amounts of data e.g ~4gb 
+//               results in a noticable slow down.
 #pragma function(memset)
 void *memset(void *DestInit, int Source, size_t Size)
 {

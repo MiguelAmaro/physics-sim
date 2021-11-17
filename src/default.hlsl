@@ -37,9 +37,11 @@ PSInput VS_Main(VSInput Vertex)
     
     float4 NewPos = mul(Vertex.Pos, Transform);
     
-    VertexShaderOutput.Pos   = NewPos;
     VertexShaderOutput.Color = Vertex.Color;
-    //VertexShaderOutput.Tex   = Vertex.Tex;
+    VertexShaderOutput.Color = float4(1.0f, 1.0f, 1.0f, 1.0f);
+    
+    VertexShaderOutput.Pos   = NewPos;
+    //VertexShaderOutput.Tex = Vertex.Tex;
     
     return VertexShaderOutput;
 }
