@@ -455,10 +455,10 @@ b32 rect_v2f32IsInside(rect_v2f32 Bounds, v2f32 Pos)
 {
     b32 Result = 1;
     
-    Result = (Bounds.min.x < Pos.x &&
-              Bounds.min.y < Pos.y &&
-              Bounds.max.x > Pos.x &&
-              Bounds.max.y > Pos.y);
+    Result = (Bounds.min.x <= Pos.x &&
+              Bounds.min.y <= Pos.y &&
+              Bounds.max.x >= Pos.x &&
+              Bounds.max.y >= Pos.y);
     
     return Result;
 }

@@ -7,6 +7,10 @@
 #include "physics_sim_math.h"
 #include "physics_sim_memory.h"
 
+
+#define TEST
+
+
 enum entity_type
 {
     Entity_Wall,

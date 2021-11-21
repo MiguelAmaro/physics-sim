@@ -688,6 +688,10 @@ Render(renderer *Renderer, app_memory *AppMemory)
                     Renderer->Context->IASetInputLayout(Renderer->InputLayout);
                     Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                     
+                    f32 SpaceWidth  = 400.0f;
+                    f32 SpaceHeight = 400.0f;
+                    ASSERT(Entity->Pos.x <= SpaceWidth &&
+                           Entity->Pos.y <= SpaceHeight);
                     
                     // NOTE(MIGUEL): High Update Frequency
                     m4f32 Trans  = m4f32Translation(Entity->Pos);
