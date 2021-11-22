@@ -32,6 +32,18 @@ struct memory_arena
     void   *BasePtr;
 };
 
+
+inline u32
+SafeTruncateu64(u64 Value)
+{
+    ASSERT(Value <= 0xffffffff);
+    
+    u32 Result = (u32)Value;
+    
+    return Result;
+}
+
+
 // NOTE(MIGUEL): Clearing large Amounts of data e.g ~4gb 
 //               results in a noticable slow down.
 void *MemorySetTo(int Value, void *DestInit, size_t Size)

@@ -17,14 +17,14 @@ struct VSInput
 {
     float4 Pos   : POSITION;
     float4 Color : COLOR;
-    // float2 Tex   : TEXCOORD;
+    float2 Tex   : TEXCOORD;
 };
 
 struct PSInput
 {
     float4 Pos   : SV_POSITION;
     float4 Color : COLOR;
-    //float2 Tex   : TEXCOORD;
+    float2 Tex   : TEXCOORD;
 };
 
 //~ VERTEX SHADER
@@ -39,25 +39,24 @@ PSInput VS_Main(VSInput Vertex)
     
     VertexShaderOutput.Color = Vertex.Color;
     VertexShaderOutput.Color = float4(1.0f, 0.3f, 0.3f, 1.0f);
-
+    
     
     VertexShaderOutput.Pos   = NewPos;
-    //VertexShaderOutput.Tex = Vertex.Tex;
+    VertexShaderOutput.Tex = Vertex.Tex;
     
     return VertexShaderOutput;
 }
 
 //~ PIXEL SHADER
 
-//Texture2D     Tex;
-//SamplerState Sampler;
+Texture2D    Tex;
+SamplerState Sampler;
 
 float4 PS_Main(PSInput Fragment) : SV_TARGET
 {
     
-    // return Tex.Sample(Sampler, Fragment.Tex);
+    //return Fragment.Color;
     
-    float4 Color;
-    return Fragment.Color;
+    return Tex.Sample(Sampler, Fragment.Tex);
     
 }

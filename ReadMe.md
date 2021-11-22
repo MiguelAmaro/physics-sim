@@ -5,7 +5,7 @@ of linear algebra and physics.
 
 Books Used:
 * Beginning DirectX 11 Game Programming
-* Physics Modeling for Game Programmers
+* Physics Modeling for Game Programmers (DirectX 9)
 
 Online Resources:
 DirectX 11:

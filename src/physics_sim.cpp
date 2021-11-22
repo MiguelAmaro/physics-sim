@@ -48,6 +48,46 @@
 
 //-/ TYPES
 
+struct bitmapdata
+{
+    s32  Width;
+    s32  Height;
+    u32 *Pixels;
+    u32  BytesPerPixel;
+};
+
+#pragma pack(push, 1)
+struct bitmapheader
+{
+    u16 FileType;
+    u32 FileSize;
+    u16 reserved_1;
+    u16 reserved_2;
+    u32 BitmapOffset;
+    u32 Size;
+    s32 Width;
+    s32 Height;
+    u16 Planes;
+    u16 BitsPerPixel;
+    u32 Compression;
+    u32 BitmapSize;
+    s32 HRes;
+    s32 VRes;
+    u32 ColorsUsed;
+    u32 ColorsImportant;
+    
+    u32 RedMask;
+    u32 GreenMask;
+    u32 BlueMask;
+};
+#pragma pack(pop)
+
+struct bit_scan_result
+{
+    b32 Found;
+    u32 Index;
+};
+
 struct win32_state
 {
     char  ExeFileName[WIN32_STATE_FILE_NAME_COUNT];
@@ -99,6 +139,18 @@ struct renderer
     ID3D11Buffer           *TriangleVBuffer;
     ID3D11Buffer           *SquareIBuffer;
     ID3D11Buffer           *SquareVBuffer;
+    ID3D11Buffer           *TextSpriteVBuffer;
+    ID3D11Buffer           *TextSpriteIBuffer;
+    
+    ID3D11ShaderResourceView *SmileyTexView;
+    ID3D11SamplerState       *SmileySamplerState;
+    bitmapdata SmileyTex;
+    
+    ID3D11ShaderResourceView *TextTexView;
+    ID3D11SamplerState       *TextSamplerState;
+    bitmapdata TextTex;
+    
+    
     
     ID3D11Buffer *CBHigh;
     ID3D11Buffer *CBLow;
@@ -108,11 +160,11 @@ struct renderer
     gpu_const_low    ConstBufferLow;
     gpu_const_static ConstBufferStatic;
     
+    /// For real-time shader swaping
     WIN32_FIND_DATAA CurrentShaderFileInfo;
     char             CurrentShaderPath[MAX_PATH];
     HANDLE InUseShaderFileA;
     HANDLE InUseShaderFileB;
-    
 };
 
 struct win32_WindowDim
@@ -141,9 +193,202 @@ uint32_t g_Running = true;
 uint32_t g_Pause   = false;
 
 //-/ FUNCTIONS
+static u32
+S8Length(const char *String)
+{
+    u32 Count = 0;
+    
+    while(*String++) { ++Count; }
+    
+    return Count;
+}
+
+
+void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
+{
+    HRESULT Result;
+    
+    u32 SpriteSize    = sizeof(vertex) * ARRAY_SIZE(TextSpriteMeshVerts);
+    u32 CharLimit     = 24;
+    u32 MessageLength = S8Length(Message);
+    
+    if(MessageLength > CharLimit)
+    {
+        MessageLength = CharLimit;
+    }
+    
+    f32 CharWidth   = 32.0f / g_WindowDim.Width;
+    f32 CharHeight  = 32.0f / g_WindowDim.Height;
+    f32 TexelWidth  = 32.0f / 864.0f;
+    u32 VertsPerLetter = 4; // 6 if no index buffer is used(duplicat verts)
+    
+    // NOTE(MIGUEL): Updating A Dynamic Vertex Buffer
+    D3D11_MAPPED_SUBRESOURCE MapResource;
+    Result = Renderer->Context->Map(Renderer->TextSpriteVBuffer, 0,
+                                    D3D11_MAP_WRITE_DISCARD, 0,
+                                    &MapResource);
+    ASSERT(!FAILED(Result));
+    
+    // Point to our vertex buffer’s internal data.
+    vertex *SpritePtr = (vertex *)MapResource.pData;
+    u32 IndexA = (u32)'A';
+    u32 IndexZ = (u32)'Z';
+    
+    for(u32 Index = 0; Index < MessageLength; ++Index)
+    {
+        f32 ThisStartX = x + (CharWidth * (f32)Index);
+        f32 ThisEndX = ThisStartX + CharWidth;
+        f32 ThisEndY = y + CharHeight;
+        
+        // NOTE(MIGUEL): Initializing the Mesh Values
+        
+        SpritePtr[0].Pos = v3f32Init(ThisEndX  , ThisEndY, 1.0f); // V0
+        SpritePtr[1].Pos = v3f32Init(ThisEndX  , y       , 1.0f); // V1
+        SpritePtr[2].Pos = v3f32Init(ThisStartX, y       , 1.0f); // V2
+        SpritePtr[3].Pos = v3f32Init(ThisStartX, ThisEndY, 1.0f); // V3
+        
+        u32 TexLookUp = 0;
+        u32 Letter = (u32)Message[Index];
+        
+        if(Letter < IndexA || Letter > IndexZ)
+        {
+            TexLookUp = (IndexZ - IndexA) + 1;
+        }
+        else
+        {
+            TexLookUp = (Letter - IndexA);
+        }
+        
+        float TUStart = 0.0f + (TexelWidth * (f32)TexLookUp);
+        float TUEnd   = TUStart + TexelWidth;
+        
+        SpritePtr[0].TexCoord = v2f32Init(TUEnd  , 0.0f); // V0
+        SpritePtr[1].TexCoord = v2f32Init(TUEnd  , 1.0f); // V1
+        SpritePtr[2].TexCoord = v2f32Init(TUStart, 1.0f); // V2
+        SpritePtr[3].TexCoord = v2f32Init(TUStart, 0.0f); // V3
+        
+        SpritePtr += 4;
+    }
+    
+    Renderer->Context->Unmap(Renderer->TextSpriteVBuffer, 0 );
+    Renderer->Context->DrawIndexed((4 * MessageLength), 0, 0);
+    
+    return;
+}
+
+bit_scan_result
+FindLeastSignificantSetBit(u32 Value)
+{
+    bit_scan_result Result = {0};
+    
+    
+#if COMPILER_MSVC
+    Result.Found = _BitScanForward(&Result.Index, Value);
+#else
+    for(u32 Test = 0; Test < 32; ++Test)
+    {
+        if(Value & (1 << Test))
+        {
+            Result.Index = Test;
+            Result.Found = 1;
+            
+            break;
+        }
+    }
+    
+#endif
+    
+    return Result;
+}
+
+
+static bitmapdata
+LoadBitmap(const char *FileName)
+{
+    bitmapdata Result = { 0 };
+    
+    LARGE_INTEGER FileSize;
+    
+    HANDLE FileHandle = CreateFileA(FileName,
+                                    GENERIC_READ,
+                                    FILE_SHARE_READ,
+                                    0,
+                                    OPEN_EXISTING,
+                                    0, 0);
+    
+    GetFileSizeEx(FileHandle, &FileSize);
+    
+    u32 FileSize32 = SafeTruncateu64(FileSize.QuadPart);
+    
+    void *Block = VirtualAlloc(0, FileSize32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    
+    ASSERT(Block);
+    
+    if(FileSize32 > 0)
+    {
+        DWORD BytesRead;
+        
+        if(ReadFile(FileHandle, Block, FileSize32, &BytesRead, 0) &&
+           (FileSize32 == BytesRead))
+        { }
+        else
+        {
+            // NOTE(MIGUEL): Failed file read!!!
+            VirtualFree(Block, 0, MEM_RELEASE);
+            Block = 0;
+        }
+        
+        bitmapheader *Header = (bitmapheader *)Block;
+        u32 *Pixels = (u32 *)((u8 *)Block + Header->BitmapOffset);
+        
+        Result.Pixels = Pixels;
+        Result.Width  = Header->Width;
+        Result.Height = Header->Height;
+        Result.BytesPerPixel = (Header->BitsPerPixel / 8);
+        
+        if(Header->Compression > 0)
+        {
+            u32 RedMask   = Header->RedMask;
+            u32 GreenMask = Header->GreenMask;
+            u32 BlueMask  = Header->BlueMask;
+            u32 AlphaMask = ~(RedMask | GreenMask | BlueMask);
+            
+            bit_scan_result RedShift   = FindLeastSignificantSetBit(RedMask  );
+            bit_scan_result GreenShift = FindLeastSignificantSetBit(GreenMask);
+            bit_scan_result BlueShift  = FindLeastSignificantSetBit(BlueMask );
+            bit_scan_result AlphaShift = FindLeastSignificantSetBit(AlphaMask);
+            
+            
+            ASSERT(  RedShift.Found);
+            ASSERT(GreenShift.Found);
+            ASSERT( BlueShift.Found);
+            ASSERT(AlphaShift.Found);
+            
+            u32 *SrcDest = Pixels;
+            
+            for(    s32 y = 0; y < Header->Height; y++)
+            {
+                for(s32 x = 0; x < Header->Width; x++)
+                {
+                    u32 c = *SrcDest;
+                    *SrcDest  = ((((c >> AlphaShift.Index) & 0xFF) << 24)|
+                                 (((c >>   RedShift.Index) & 0xFF) << 16)|
+                                 (((c >> GreenShift.Index) & 0xFF) <<  8)|
+                                 (((c >>  BlueShift.Index) & 0xFF) <<  0));
+                    SrcDest++;
+                }
+            }
+        }
+    }
+    \
+    return Result;
+}
 
 static void
-D3D11InitTextureMappingCrap(renderer *Renderer, buffer *Buffer, u32 Width, u32 Height)
+D3D11InitTextureMapping(renderer                 *Renderer,
+                        ID3D11ShaderResourceView **ResView,
+                        ID3D11SamplerState       **SamplerState,
+                        bitmapdata               *Buffer)
 {
     D3D11_TEXTURE2D_DESC TextDesc = { 0 };
     TextDesc.Width  = Buffer->Width;
@@ -159,7 +404,7 @@ D3D11InitTextureMappingCrap(renderer *Renderer, buffer *Buffer, u32 Width, u32 H
     TextDesc.MiscFlags      = 0;
     
     D3D11_SUBRESOURCE_DATA ResData = { 0 };
-    ResData.pSysMem     = Buffer->Data;
+    ResData.pSysMem     = Buffer->Pixels;
     ResData.SysMemPitch = Buffer->Width * Buffer->BytesPerPixel;
     
     // TODO(MIGUEL): Figure out where to throw this
@@ -173,11 +418,7 @@ D3D11InitTextureMappingCrap(renderer *Renderer, buffer *Buffer, u32 Width, u32 H
     ResViewDesc.Texture2D.MostDetailedMip = 0;
     ResViewDesc.Texture2D.MipLevels       = 1;
     
-    ID3D11ShaderResourceView *ResView;
-    
-    Renderer->Device->CreateShaderResourceView(Texture, &ResViewDesc, &ResView);
-    
-    ID3D11SamplerState *SamplerState;
+    Renderer->Device->CreateShaderResourceView(Texture, &ResViewDesc, ResView);
     
     D3D11_SAMPLER_DESC SamplerDesc = { 0 };
     SamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -185,10 +426,10 @@ D3D11InitTextureMappingCrap(renderer *Renderer, buffer *Buffer, u32 Width, u32 H
     SamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
     SamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
     
-    Renderer->Device->CreateSamplerState(&SamplerDesc, &SamplerState);
+    Renderer->Device->CreateSamplerState(&SamplerDesc, SamplerState);
     
     // TODO(MIGUEL): Move to render()
-    Renderer->Context->PSSetSamplers(0, 1, &SamplerState);
+    Renderer->Context->PSSetSamplers(0, 1, SamplerState);
     
     return;
 }
@@ -460,17 +701,6 @@ S8Concat(size_t SourceACount, char *SourceA,
 }
 
 
-static u32
-S8Length(char *String)
-{
-    u32 Count = 0;
-    
-    while(*String++) { ++Count; }
-    
-    return Count;
-}
-
-
 static void
 win32_BuildExePathFileName(win32_state *State,
                            char *FileName,
@@ -717,6 +947,8 @@ Render(renderer *Renderer, app_memory *AppMemory)
                     Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
                     
                     Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
+                    Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
+                    Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
                     
                     Renderer->Context->Draw(3, 0);
                 } break;
@@ -757,6 +989,8 @@ Render(renderer *Renderer, app_memory *AppMemory)
                     Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
                     
                     Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
+                    Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
+                    Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
                     
                     Renderer->Context->DrawIndexed(ARRAY_SIZE(SquareMeshIndices), 0, 0);
                 } break;
@@ -767,6 +1001,36 @@ Render(renderer *Renderer, app_memory *AppMemory)
             }
         }
         
+        u32 TextSpriteStride[] = {sizeof(vertex)};
+        u32 TextSpriteOffset[] = { 0 };
+        
+        Renderer->Context->IASetVertexBuffers(0, 1,
+                                              &Renderer->TextSpriteVBuffer,
+                                              TextSpriteStride,
+                                              TextSpriteOffset);
+        Renderer->Context->IASetInputLayout(Renderer->InputLayout);
+        Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        
+        // NOTE(MIGUEL): High Update Frequency
+        m4f32 Trans  = m4f32Translation(v3f32Init(100.0f, 100.0f, 1.0f));
+        m4f32 Rotate = m4f32Rotation(0.0f, 0.0f, 0.0f);
+        m4f32 Scale  = m4f32Scale   (800.0f, 800.0f, 1.0f);
+        m4f32 World  = Rotate * Scale * Trans;
+        
+        Renderer->ConstBufferHigh.Time   = AppState->DeltaTimeMS;
+        Renderer->ConstBufferHigh.World  = World;
+        
+        Renderer->Context->UpdateSubresource(Renderer->CBHigh, 0, 0,
+                                             &Renderer->ConstBufferHigh, 0, 0);
+        
+        
+        Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
+        Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
+        Renderer->Context->PSSetShaderResources(0, 1, &Renderer->TextTexView);
+        Renderer->Context->PSSetSamplers       (0, 1, &Renderer->TextSamplerState);
+        
+        // NOTE(MIGUEL): Is this function in clip space??
+        DrawString("HELLO WORLD", -0.2f, 0.0f, Renderer);
         
         Renderer->SwapChain->Present(0 , 0);
     }
@@ -828,7 +1092,7 @@ b32 LoadShader(renderer *Renderer,
     }
     
     /// SET INPUT LAYOUT
-    D3D11_INPUT_ELEMENT_DESC VertexLayout[2] = { 0 };
+    D3D11_INPUT_ELEMENT_DESC VertexLayout[3] = { 0 };
     
     VertexLayout[0].SemanticName         = "POSITION";
     VertexLayout[0].SemanticIndex        = 0;
@@ -845,6 +1109,15 @@ b32 LoadShader(renderer *Renderer,
     VertexLayout[1].AlignedByteOffset    = D3D11_APPEND_ALIGNED_ELEMENT;
     VertexLayout[1].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
     VertexLayout[1].InstanceDataStepRate = 0;
+    
+    VertexLayout[2].SemanticName         = "TEXCOORD";
+    VertexLayout[2].SemanticIndex        = 0;
+    VertexLayout[2].Format               = DXGI_FORMAT_R32G32_FLOAT;
+    VertexLayout[2].InputSlot            = 0;
+    VertexLayout[2].AlignedByteOffset    = D3D11_APPEND_ALIGNED_ELEMENT;
+    VertexLayout[2].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
+    VertexLayout[2].InstanceDataStepRate = 0;
+    
     
     u32 TotalLayoutElements = ARRAYSIZE(VertexLayout);
     
@@ -942,6 +1215,38 @@ void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
         Result = Renderer->Device->CreateBuffer(&SquareIndexDesc,
                                                 &SquareIndexData,
                                                 &Renderer->SquareIBuffer );
+        ASSERT(!FAILED(Result));
+        
+        /// TEXT SQUARE
+        
+        u32 TextSpriteSize = sizeof(vertex) * ARRAY_SIZE(TextSpriteMeshVerts);
+        u32 CharLimit      = 24;
+        
+        D3D11_BUFFER_DESC TextSpriteVertDesc = { 0 };
+        TextSpriteVertDesc.Usage          = D3D11_USAGE_DYNAMIC;
+        TextSpriteVertDesc.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
+        TextSpriteVertDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        TextSpriteVertDesc.ByteWidth      = TextSpriteSize * CharLimit;
+        /*
+        D3D11_SUBRESOURCE_DATA TextSpriteVertData = { 0 };
+        TextSpriteVertData.pSysMem = nullptr;
+        */
+        Result = Renderer->Device->CreateBuffer(&TextSpriteVertDesc,
+                                                0,
+                                                &Renderer->TextSpriteVBuffer );
+        ASSERT(!FAILED(Result));
+        
+        D3D11_BUFFER_DESC TextSpriteIndexDesc = { 0 };
+        TextSpriteIndexDesc.Usage     = D3D11_USAGE_DEFAULT;
+        TextSpriteIndexDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+        TextSpriteIndexDesc.ByteWidth = sizeof(u16) * ARRAY_SIZE(TextSpriteMeshIndices);
+        
+        D3D11_SUBRESOURCE_DATA TextSpriteIndexData = { 0 };
+        TextSpriteIndexData.pSysMem = TextSpriteMeshIndices;
+        
+        Result = Renderer->Device->CreateBuffer(&TextSpriteIndexDesc,
+                                                &TextSpriteIndexData,
+                                                &Renderer->TextSpriteIBuffer );
         ASSERT(!FAILED(Result));
     }
     
@@ -1141,6 +1446,17 @@ void PhysicsSim(app_memory *AppMemory)
     
     MemoryArenaDiscard(&AssetLoadingArena);
     
+    g_Renderer.SmileyTex = LoadBitmap("..\\res\\frown.bmp");
+    g_Renderer.TextTex   = LoadBitmap("..\\res\\text.bmp");
+    
+    D3D11InitTextureMapping(&g_Renderer,
+                            &g_Renderer.SmileyTexView,
+                            &g_Renderer.SmileySamplerState,
+                            &g_Renderer.SmileyTex);
+    D3D11InitTextureMapping(&g_Renderer,
+                            &g_Renderer.TextTexView,
+                            &g_Renderer.TextSamplerState,
+                            &g_Renderer.TextTex);
     
     // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
     //               system. (World moving around you when walking to simulate you looking around)

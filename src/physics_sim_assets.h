@@ -10,25 +10,26 @@ struct vertex
 {
     v3f32 Pos;
     v4f32 Color;
+    v2f32 TexCoord;
 };
 
 
 vertex TriangleMeshVerts[] =
 {
-    //       POS                    COLOR                      TEX ...
-    {{ 0.0f,  0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}},
-    {{ 0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f}},
-    {{-0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}},
+    //       POS                    COLOR                  TEX ...
+    {{ 0.0f,  0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}, { 0.0f,  0.5f}},
+    {{ 0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f}, { 0.5f, -0.5f}},
+    {{-0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}, {-0.5f, -0.5f}},
 };
 
 
 vertex SquareMeshVerts[] =
 {
     //       POS                    COLOR                      TEX ...
-    {{ 0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}}, // V0
-    {{ 0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f}}, // V1
-    {{-0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}}, // V2
-    {{-0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 1.0f, 1.0f}}, // V3
+    {{ 0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}, { 1.0f,  1.0f}}, // V0
+    {{ 0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f}, { 1.0f, -1.0f}}, // V1
+    {{-0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}, {-1.0f, -1.0f}}, // V2
+    {{-0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 1.0f, 1.0f}, {-1.0f,  1.0f}}, // V3
 };
 
 // NOTE(MIGUEL): we must also take the winding order of the vertices
@@ -43,6 +44,53 @@ vertex SquareMeshVerts[] =
 //               |/__|
 // (-0.5, -0.5)V2     V1(0.5, -0.5)
 u16 SquareMeshIndices[] =
+{
+    // ADJACENCY LIST
+    0, 1, 2,
+    0, 2, 3,
+};
+
+#if 0
+// NOTE(MIGUEL): I thought I would need this but with a dynamic vertex buffer
+//               I can initilize the values and map them the vertex buffer
+//               when needed.
+
+//               The index buffer helps not having to define duplicat verts
+//               when constucting quads/squares. The vertecies that are commented
+//               out are neccesary i we dont use the index buffer. In that case
+//               we define 2 triangles with 3 verts each. Two of the verts will
+//               overlap each other(have the same position) (e.g. V2 & V0).
+
+vertex TextSpriteMeshVerts[] =
+{
+    //       POS                    COLOR                      TEX ...
+    {{ 1.0f,  1.0f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}, { 1.0f,  1.0f}}, // V0
+    {{ 1.0f, -1.0f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f}, { 1.0f, -1.0f}}, // V1
+    {{-1.0f, -1.0f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}, {-1.0f, -1.0f}}, // V2
+    
+    //{{-1.0f, -1.0f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}, {-1.0f, -1.0f}}, // V2
+    {{-1.0f,  1.0f, 0.5f}, { 1.0f, 0.0f, 1.0f, 1.0f}, {-1.0f,  1.0f}}, // V3
+    //{{ 1.0f,  1.0f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}, { 1.0f,  1.0f}}, // V0
+};
+
+u16 TextSpriteMeshIndices[] =
+{
+    // ADJACENCY LIST
+    0, 1, 2,
+    0, 2, 3,
+};
+#endif 
+
+vertex CubeMeshVerts[] =
+{
+    //       POS                    COLOR                      TEX ...
+    {{ 0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}, { 1.0f,  1.0f}}, // V0
+    {{ 0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f}, { 1.0f, -1.0f}}, // V1
+    {{-0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}, {-1.0f, -1.0f}}, // V2
+    {{-0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 1.0f, 1.0f}, {-1.0f,  1.0f}}, // V3
+};
+
+u16 CubeMeshIndices[] =
 {
     // ADJACENCY LIST
     0, 1, 2,

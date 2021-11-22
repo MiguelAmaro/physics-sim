@@ -40,6 +40,8 @@ struct app_state
     f32 DeltaTimeMS;
     f32 Time;
     
+    memory_arena AssetArena;
+    
     entity Entities[256];
     u32 EntityCount;
     u32 EntityMaxCount;
