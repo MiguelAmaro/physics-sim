@@ -363,8 +363,8 @@ LoadBitmap(const char *FileName)
             ASSERT(GreenShift.Found);
             ASSERT( BlueShift.Found);
             ASSERT(AlphaShift.Found);
-            
-            u32 *SrcDest = Pixels;
+            `
+                u32 *SrcDest = Pixels;
             
             for(    s32 y = 0; y < Header->Height; y++)
             {

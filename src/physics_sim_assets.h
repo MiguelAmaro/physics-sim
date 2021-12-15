@@ -50,7 +50,7 @@ u16 SquareMeshIndices[] =
     0, 2, 3,
 };
 
-#if 0
+#if 1
 // NOTE(MIGUEL): I thought I would need this but with a dynamic vertex buffer
 //               I can initilize the values and map them the vertex buffer
 //               when needed.
