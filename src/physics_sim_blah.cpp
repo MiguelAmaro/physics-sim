@@ -74,8 +74,8 @@ static void SimInit(app_state *AppState)
     Entity->Exists = true;
     
     // NOTE(MIGUEL): Moving Entities
-    u32 EntitiesWanted = 100;
-    u32 VectorTableSize = ARRAY_SIZE(NormalizedVectorTable);
+    u32 EntitiesWanted = 1;
+    u32 VectorTableSize = ARRAY_COUNT(NormalizedVectorTable);
     for(u32 EntityIndex = 0; EntityIndex < EntitiesWanted; EntityIndex++)
     {
         
@@ -131,6 +131,21 @@ static void SimInit(app_state *AppState)
     
     return;
 }
+
+void 
+PushRectangle()
+{
+    return;
+}
+
+void
+PushHollowedRectagle()
+{
+    
+    
+    return;
+}
+
 
 static b32
 Intersects(f32 *NearestNormalizedCollisionPoint,
@@ -191,7 +206,7 @@ extern "C" SIM_UPDATE(Update)
                 dbgint = 1408;
             }
 #endif
-            f32   Speed = 0.25f;
+            f32   Speed = 0.01f;
             v3f32 Drag  = {0.0f, 0.0f, 0.0f};
             v3f32 Acc   = Entity->Acc * 1.0f;
             v3f32 Vel   = Speed * (Entity->Vel + Drag);

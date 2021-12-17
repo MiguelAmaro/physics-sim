@@ -73,13 +73,13 @@ vertex TextSpriteMeshVerts[] =
     //{{ 1.0f,  1.0f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}, { 1.0f,  1.0f}}, // V0
 };
 
+#endif 
 u16 TextSpriteMeshIndices[] =
 {
     // ADJACENCY LIST
     0, 1, 2,
     0, 2, 3,
 };
-#endif 
 
 vertex CubeMeshVerts[] =
 {

@@ -125,6 +125,22 @@ struct gpu_const_static
     m4f32  View;
 };
 
+typedef enum render_type render_type;
+enum render_type
+{
+    RenderType_tri,
+    RenderType_quad,
+};
+
+struct render_object
+{
+    render_type Type;
+    v3f32 Pos;
+    v2f32 Dim;
+    
+    u8 Data[32];
+}
+
 struct renderer
 {
     ID3D11Device           *Device;
@@ -150,7 +166,7 @@ struct renderer
     ID3D11SamplerState       *TextSamplerState;
     bitmapdata TextTex;
     
-    
+    render_object RenderBuffer[65553];
     
     ID3D11Buffer *CBHigh;
     ID3D11Buffer *CBLow;
@@ -208,8 +224,8 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
 {
     HRESULT Result;
     
-    u32 SpriteSize    = sizeof(vertex) * ARRAY_SIZE(TextSpriteMeshVerts);
     u32 CharLimit     = 24;
+    u32 SpriteSize    = sizeof(vertex) * ARRAY_COUNT(TextSpriteMeshVerts);
     u32 MessageLength = S8Length(Message);
     
     if(MessageLength > CharLimit)
@@ -220,7 +236,7 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
     f32 CharWidth   = 32.0f / g_WindowDim.Width;
     f32 CharHeight  = 32.0f / g_WindowDim.Height;
     f32 TexelWidth  = 32.0f / 864.0f;
-    u32 VertsPerLetter = 4; // 6 if no index buffer is used(duplicat verts)
+    u32 VertsPerLetter = 6;
     
     // NOTE(MIGUEL): Updating A Dynamic Vertex Buffer
     D3D11_MAPPED_SUBRESOURCE MapResource;
@@ -229,11 +245,16 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
                                     &MapResource);
     ASSERT(!FAILED(Result));
     
+    
+    
     // Point to our vertex buffer’s internal data.
-    vertex *SpritePtr = (vertex *)MapResource.pData;
+    vertex *SpritePtr     = (vertex *)MapResource.pData;
+    
+    
     u32 IndexA = (u32)'A';
     u32 IndexZ = (u32)'Z';
     
+    Renderer->Context->IASetIndexBuffer(Renderer->TextSpriteIBuffer, DXGI_FORMAT_R16_UINT, 0 );
     for(u32 Index = 0; Index < MessageLength; ++Index)
     {
         f32 ThisStartX = x + (CharWidth * (f32)Index);
@@ -259,7 +280,7 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
             TexLookUp = (Letter - IndexA);
         }
         
-        float TUStart = 0.0f + (TexelWidth * (f32)TexLookUp);
+        float TUStart = 01.0f + (TexelWidth * (f32)TexLookUp);
         float TUEnd   = TUStart + TexelWidth;
         
         SpritePtr[0].TexCoord = v2f32Init(TUEnd  , 0.0f); // V0
@@ -268,10 +289,11 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
         SpritePtr[3].TexCoord = v2f32Init(TUStart, 0.0f); // V3
         
         SpritePtr += 4;
+        
+        Renderer->Context->DrawIndexed((6),0 , 4 * Index);
     }
     
     Renderer->Context->Unmap(Renderer->TextSpriteVBuffer, 0 );
-    Renderer->Context->DrawIndexed((4 * MessageLength), 0, 0);
     
     return;
 }
@@ -363,8 +385,8 @@ LoadBitmap(const char *FileName)
             ASSERT(GreenShift.Found);
             ASSERT( BlueShift.Found);
             ASSERT(AlphaShift.Found);
-            `
-                u32 *SrcDest = Pixels;
+            
+            u32 *SrcDest = Pixels;
             
             for(    s32 y = 0; y < Header->Height; y++)
             {
@@ -992,7 +1014,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
                     Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
                     Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
                     
-                    Renderer->Context->DrawIndexed(ARRAY_SIZE(SquareMeshIndices), 0, 0);
+                    Renderer->Context->DrawIndexed(ARRAY_COUNT(SquareMeshIndices), 0, 0);
                 } break;
                 default:
                 {
@@ -1180,7 +1202,7 @@ void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
         D3D11_BUFFER_DESC TriangleVertDesc = { 0 };
         TriangleVertDesc.Usage     = D3D11_USAGE_DEFAULT;
         TriangleVertDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        TriangleVertDesc.ByteWidth = sizeof(vertex) * ARRAY_SIZE(TriangleMeshVerts);
+        TriangleVertDesc.ByteWidth = sizeof(vertex) * ARRAY_COUNT(TriangleMeshVerts);
         
         D3D11_SUBRESOURCE_DATA TriangleVertData = { 0 };
         TriangleVertData.pSysMem = TriangleMeshVerts;
@@ -1194,7 +1216,7 @@ void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
         D3D11_BUFFER_DESC SquareVertDesc = { 0 };
         SquareVertDesc.Usage     = D3D11_USAGE_DEFAULT;
         SquareVertDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        SquareVertDesc.ByteWidth = sizeof(vertex) * ARRAY_SIZE(SquareMeshVerts);
+        SquareVertDesc.ByteWidth = sizeof(vertex) * ARRAY_COUNT(SquareMeshVerts);
         
         D3D11_SUBRESOURCE_DATA SquareVertData = { 0 };
         SquareVertData.pSysMem = SquareMeshVerts;
@@ -1207,7 +1229,7 @@ void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
         D3D11_BUFFER_DESC SquareIndexDesc = { 0 };
         SquareIndexDesc.Usage     = D3D11_USAGE_DEFAULT;
         SquareIndexDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-        SquareIndexDesc.ByteWidth = sizeof(u16) * ARRAY_SIZE(SquareMeshIndices);
+        SquareIndexDesc.ByteWidth = sizeof(u16) * ARRAY_COUNT(SquareMeshIndices);
         
         D3D11_SUBRESOURCE_DATA SquareIndexData = { 0 };
         SquareIndexData.pSysMem = SquareMeshIndices;
@@ -1219,7 +1241,7 @@ void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
         
         /// TEXT SQUARE
         
-        u32 TextSpriteSize = sizeof(vertex) * ARRAY_SIZE(TextSpriteMeshVerts);
+        u32 TextSpriteSize = sizeof(vertex) * ARRAY_COUNT(TextSpriteMeshVerts);
         u32 CharLimit      = 24;
         
         D3D11_BUFFER_DESC TextSpriteVertDesc = { 0 };
@@ -1227,23 +1249,23 @@ void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
         TextSpriteVertDesc.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
         TextSpriteVertDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         TextSpriteVertDesc.ByteWidth      = TextSpriteSize * CharLimit;
-        /*
+#if 0
         D3D11_SUBRESOURCE_DATA TextSpriteVertData = { 0 };
         TextSpriteVertData.pSysMem = nullptr;
-        */
+#endif
         Result = Renderer->Device->CreateBuffer(&TextSpriteVertDesc,
                                                 0,
                                                 &Renderer->TextSpriteVBuffer );
         ASSERT(!FAILED(Result));
         
         D3D11_BUFFER_DESC TextSpriteIndexDesc = { 0 };
-        TextSpriteIndexDesc.Usage     = D3D11_USAGE_DEFAULT;
-        TextSpriteIndexDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-        TextSpriteIndexDesc.ByteWidth = sizeof(u16) * ARRAY_SIZE(TextSpriteMeshIndices);
+        TextSpriteIndexDesc.Usage          = D3D11_USAGE_DEFAULT;
+        TextSpriteIndexDesc.BindFlags      = D3D11_BIND_INDEX_BUFFER;
+        //TextSpriteIndexDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        TextSpriteIndexDesc.ByteWidth = sizeof(u16) * (6 * CharLimit);
         
         D3D11_SUBRESOURCE_DATA TextSpriteIndexData = { 0 };
         TextSpriteIndexData.pSysMem = TextSpriteMeshIndices;
-        
         Result = Renderer->Device->CreateBuffer(&TextSpriteIndexDesc,
                                                 &TextSpriteIndexData,
                                                 &Renderer->TextSpriteIBuffer );
@@ -1292,7 +1314,7 @@ void LoadAssets(renderer *Renderer, memory_arena *AssetLoadingArena)
     
     memcpy(&Renderer->CurrentShaderPath,
            "..\\src\\default.hlsl",
-           ARRAY_SIZE("..\\src\\default.hlsl"));
+           ARRAY_COUNT("..\\src\\default.hlsl"));
     
     char *ShaderPath = Renderer->CurrentShaderPath;
     
@@ -1530,7 +1552,7 @@ void PhysicsSim(app_memory *AppMemory)
             
             if(SimCode.Update)
             {
-                SimCode.Update(AppMemory);
+                SimCode.Update(AppMemory, &g_Renderer->RenderBuffer);
             }
             
             

@@ -15,7 +15,7 @@
 #define GIGABYTES(size) (MEGABYTES(size) * 1024LL)
 #define TERABYTES(size) (GIGABYTES(size) * 1024LL)
 
-#define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
+#define ARRAY_COUNT(array) (sizeof(array) / sizeof(array[0]))
 #define MAXIMUM(a, b) ((a < b) ? (a) : (b))
 
 #define PI32 (3.141592653589793f)
