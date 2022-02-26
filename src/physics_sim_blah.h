@@ -6,9 +6,10 @@
 #include "physics_sim_types.h"
 #include "physics_sim_math.h"
 #include "physics_sim_memory.h"
+#include "physics_sim_renderer.h"
 
 
-#define TEST
+#define TEST 1
 
 
 enum entity_type
@@ -47,7 +48,7 @@ struct app_state
     u32 EntityMaxCount;
 };
 
-#define SIM_UPDATE( name) void name(app_memory *AppMemory)
+#define SIM_UPDATE( name) void name(app_memory *AppMemory, render_buffer *RenderBuffer)
 typedef SIM_UPDATE(SIM_Update);
 SIM_UPDATE(SIMUpdateStub)
 { return; }

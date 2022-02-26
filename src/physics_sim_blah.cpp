@@ -1,5 +1,6 @@
 #include "physics_sim_blah.h"
 #include "physics_sim_assets.h"
+#include "physics_sim_assets.h"
 #include "windows.h"
 
 static void SimInit(app_state *AppState)
@@ -13,7 +14,7 @@ static void SimInit(app_state *AppState)
     
     // NOTE(MIGUEL): Wall Entities
     
-#ifndef TEST
+#if TEST
 #endif
     entity *EntityWallLeft   = AppState->Entities + AppState->EntityCount++;
     entity *EntityWallRight  = AppState->Entities + AppState->EntityCount++;
@@ -26,8 +27,7 @@ static void SimInit(app_state *AppState)
     
     f32 SpaceWidth  = 400.0f;
     f32 SpaceHeight = 400.0f;
-#ifndef TEST
-#endif
+    
     Entity = EntityWallLeft;
     Entity->Dim.x = CommonWidth;
     Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
@@ -49,6 +49,8 @@ static void SimInit(app_state *AppState)
     Entity->Pos.z = 0.0f;
     Entity->Type = Entity_Wall;
     Entity->Exists = true;
+    
+    
     Entity = EntityWallTop;
     Entity->Dim.x = SpaceWidth + 0.0f;
     Entity->Dim.y = CommonWidth; 
@@ -60,8 +62,6 @@ static void SimInit(app_state *AppState)
     Entity->Type = Entity_Wall;
     Entity->Exists = true;
     
-#ifndef TEST
-#endif
     Entity = EntityWallBottom;
     Entity->Dim.x = SpaceWidth + 0.0f;
     Entity->Dim.y = CommonWidth; 
@@ -96,16 +96,10 @@ static void SimInit(app_state *AppState)
             f32 X = NormalizedVectorTable[SeedX % VectorTableSize];
             f32 Y = NormalizedVectorTable[SeedY % VectorTableSize];
             
-#ifdef TEST
-            
             Entity->Pos.x =  0.0f;
             Entity->Pos.y =  0.0f;
             Entity->Pos.z =  0.0f;
-#else
-            Entity->Pos.x =  (24 * EntityIndex) % (u32)SpaceWidth;
-            Entity->Pos.y =  (24 * EntityIndex) % (u32)SpaceHeight;
-            Entity->Pos.z =  0.0f;
-#endif
+            
             Entity->Dim.x = 20.0f;
             Entity->Dim.y = 20.0f; 
             Entity->Dim.z = 20.0f;
@@ -114,34 +108,14 @@ static void SimInit(app_state *AppState)
             Entity->Acc.y = 0.0f;
             Entity->Acc.z = 0.0f;
             
-#ifndef TEST
-            Entity->Vel.x = X;
-            Entity->Vel.y = Y;
-            Entity->Vel.z = 0.0f;
-#else
             Entity->Vel.x = 0.3251f;
             Entity->Vel.y = 0.47999999f;
             Entity->Vel.z = 0.0f;
-#endif
             
             Entity->Type = Entity_Moves;
             Entity->Exists = true;
         }
     };
-    
-    return;
-}
-
-void 
-PushRectangle()
-{
-    return;
-}
-
-void
-PushHollowedRectagle()
-{
-    
     
     return;
 }
@@ -179,6 +153,40 @@ Intersects(f32 *NearestNormalizedCollisionPoint,
     return Result;
 }
 
+void
+DrawVec(render_buffer *RenderBuffer, v3f32 Vec, v3f32 Pos)
+{
+    v3f32 CosSin = v3f32Normalize(Vec);
+    v3f32 Dim    = v3f32Init(400.0f *v3f32Magnitude(Vec), 1.0f, 1.0f);
+    
+    PushLine(RenderBuffer, Pos, Dim, CosSin);
+    
+    return;
+}
+
+void
+DrawAABB(render_buffer *RenderBuffer, entity Entity)
+{
+    v3f32 Origin = Entity.Pos;
+    v3f32 Offset = Entity.Dim / 2.0f;
+    
+    v3f32 PosL = v3f32Init(Origin.x - Offset.x, Origin.y, Origin.z);
+    v3f32 PosR = v3f32Init(Origin.x + Offset.x, Origin.y, Origin.z);
+    v3f32 PosT = v3f32Init(Origin.x, Origin.y + Offset.y, Origin.z);
+    v3f32 PosB = v3f32Init(Origin.x, Origin.y - Offset.y, Origin.z);
+    
+    v3f32 DimLR = v3f32Init(Entity.Dim.y, 1.0f,  1.0f);
+    v3f32 DimTB = v3f32Init(1.0f, Entity.Dim.x, 1.0f);
+    
+    v3f32 CosSin = v3f32Normalize(Entity.Vel);
+    PushRect(RenderBuffer, PosL, DimLR, v3f32Init(0.0, 0.0,0.0));
+    PushRect(RenderBuffer, PosR, DimLR, v3f32Init(0.0, 0.0,0.0));
+    //PushRect(RenderBuffer, PosT, DimTB, v3f32Init(1.0, 1.0,0.0));
+    //PushRect(RenderBuffer, PosB, DimTB, v3f32Init(0.0, 1.0,0.0));
+    
+    return;
+}
+
 extern "C" SIM_UPDATE(Update)
 {
     app_state *AppState = (app_state *)AppMemory->PermanentStorage;
@@ -197,7 +205,7 @@ extern "C" SIM_UPDATE(Update)
     {
         if(Entity->Type == Entity_Moves && Entity->Exists)
         {
-#ifndef TEST
+#if TEST
 #else
             // NOTE(MIGUEL): Equations of motion
             if(Entity->Type == Entity_Moves)
@@ -206,7 +214,7 @@ extern "C" SIM_UPDATE(Update)
                 dbgint = 1408;
             }
 #endif
-            f32   Speed = 0.01f;
+            f32   Speed = 0.03f;
             v3f32 Drag  = {0.0f, 0.0f, 0.0f};
             v3f32 Acc   = Entity->Acc * 1.0f;
             v3f32 Vel   = Speed * (Entity->Vel + Drag);
@@ -216,11 +224,11 @@ extern "C" SIM_UPDATE(Update)
             
             Entity->Vel = Acc * AppState->DeltaTimeMS + Entity->Vel;
             
+            //Entity->EulerZ = ArcTan2(Vel.y, Vel.x);
             
-            v3f32 NormalizedVel = v3f32Normalize(Vel);
-            Entity->EulerZ = ArcTan2(NormalizedVel.x, NormalizedVel.y);
-            f32   NormalizedCollisionPoint = 1.0f;
-            f32 RemainingTravelDistance = v3f32GetMagnitude(PosDelta);
+            
+            f32 NormalizedCollisionPoint = 1.0f;
+            f32 RemainingTravelDistance = v3f32Magnitude(PosDelta);
             
             for(u32 Iteration = 0; Iteration < 4; Iteration++)
             {
@@ -241,6 +249,8 @@ extern "C" SIM_UPDATE(Update)
                         {
                             Entity->Exists = false;
                         }
+                        
+                        //DrawLine(RenderBuffer, Point1, Point2);
                         
                         ASSERT(Entity->Exists);
                         
@@ -314,19 +324,27 @@ extern "C" SIM_UPDATE(Update)
                         }
                     }
                 }
-#ifndef TEST
+                
+#if TEST
                 Entity->Pos += PosDelta;
 #else
                 Entity->Pos += PosDelta;
                 f32 SpaceWidth  = 400.0f;
                 f32 SpaceHeight = 400.0f;
-                ASSERT(Entity->Pos.x <= SpaceWidth &&
-                       Entity->Pos.y <= SpaceHeight);
+                /*ASSERT(Entity->Pos.x <= SpaceWidth &&
+                       Entity->Pos.y <= SpaceHeight);*/
                 
 #endif
                 
             }
         }
+    }
+    
+    Entity =  AppState->Entities;
+    for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
+    {
+        DrawAABB(RenderBuffer, *Entity);
+        PushRect(RenderBuffer, Entity->Pos, Entity->Dim, Entity->Vel);
     }
     
     

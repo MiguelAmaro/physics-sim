@@ -23,12 +23,24 @@ set MSVC_WARNINGS= -wd4700
 set MSVC_FLAGS= ^
 %MSVC_WARNINGS% ^
 -nologo ^
+-Wall ^
+-wd4820 ^
+-wd4668 ^
+-wd4577 ^
+-wd5045 ^
+-wd4505 ^
+-wd4365 ^
+-wd4305 ^
+-wd4201 ^
+-wd4100 ^
+-wd4191 ^
+-wd4061 ^
 -Zi ^
 -DRENDERER_OPENGL ^
 -Gm- ^
 -GR- ^
 -EHa- ^
--Oi ^
+-Od ^
 -GS- ^
 -Gs9999999
 
@@ -77,10 +89,11 @@ goto :COMPILE_EXE rem !!!DEFAULT PATH!!!
 :COMPILE_EXE
 rem  EXE
 echo ============================================================
+
+taskkill /f /im physics_sim.exe
 pushd build
 
-call cl ^
-%MSVC_FLAGS% ^
+cl %MSVC_FLAGS% ^
 %MSVC_SEARCH_DIRS% ^
 %SOURCES% ^
 /link ^
@@ -99,7 +112,7 @@ pushd build
 rem del *.pdb > NUL 2> NUL
 rem echo WAITING FOR PDB > lock.tmp
 
-call cl ^
+cl ^
 %MSVC_FLAGS% ^
 %MSVC_SEARCH_DIRS% ^
 F:\Dev\PhysicsSim\src\%PROJECT_NAME%_blah.cpp ^

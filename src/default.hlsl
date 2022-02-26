@@ -55,8 +55,8 @@ SamplerState Sampler;
 float4 PS_Main(PSInput Fragment) : SV_TARGET
 {
     
-    //return Fragment.Color;
+    return Fragment.Color;
     
-    return Tex.Sample(Sampler, Fragment.Tex);
+    //return Tex.Sample(Sampler, Fragment.Tex);
     
 }

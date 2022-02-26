@@ -5,6 +5,6 @@
 
 #include "physics_sim_types.h"
 
-#define ASSERT(expression) if(!(expression)){ *(u32 *)0x00 = 0; }
+#define ASSERT(expression) if(!(expression)){ __debugbreak(); }
 
 #endif //PHYSICS_SIM_PLATFORM_H

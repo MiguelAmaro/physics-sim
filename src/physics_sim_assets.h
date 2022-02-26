@@ -22,8 +22,29 @@ vertex TriangleMeshVerts[] =
     {{-0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f}, {-0.5f, -0.5f}},
 };
 
+// TODO(MIGUEL): Gut these other vertex attributes later
+// NOTE(MIGUEL): The tex attribs are unuted and taking up space in the line
+//               vertex buffer.it seems to be is ok for now since sizof(vertex)
+//               is used as the stride. but this can be an issue later
+v3f32 LineMeshVerts[] =
+{
+    //       POS 
+    { 0.0f, -0.5f, 0.5f}, // V0
+    { 1.0f, -0.5f, 0.5f}, // V1
+    { 1.0f,  0.5f, 0.5f}, // V2
+    { 0.0f, -0.5f, 0.5f}, // V3
+    { 1.0f,  0.5f, 0.5f}, // V4
+    { 0.0f,  0.5f, 0.5f}, // V5
+};
 
-vertex SquareMeshVerts[] =
+u16 LineMeshIndices[] =
+{
+    // ADJACENCY LIST
+    0, 2, 3,
+    0, 1, 3,
+};
+
+vertex QuadMeshVerts[] =
 {
     //       POS                    COLOR                      TEX ...
     {{ 0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f}, { 1.0f,  1.0f}}, // V0
@@ -43,7 +64,7 @@ vertex SquareMeshVerts[] =
 //               | / |
 //               |/__|
 // (-0.5, -0.5)V2     V1(0.5, -0.5)
-u16 SquareMeshIndices[] =
+u16 QuadMeshIndices[] =
 {
     // ADJACENCY LIST
     0, 1, 2,

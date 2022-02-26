@@ -3,8 +3,11 @@
 #ifndef PHYSICS_SIM_MATH_H
 #define PHYSICS_SIM_MATH_H
 
+#include "physics_sim_memory.h"
 #include "physics_sim_types.h"
+#include <immintrin.h>
 #include "thirdparty\sse_mathisfun.h"
+
 
 
 //-/ MACROS
@@ -45,7 +48,7 @@ f32 Sine(f32 Radians)
     return Result;
 };
 
-f32 Absolue(f32 Value)
+f32 Absolute(f32 Value)
 {
     f32 Result = 0.0f;
     
@@ -54,6 +57,10 @@ f32 Absolue(f32 Value)
     return Result;
 }
 
+// Series and Sequences for function approximation
+// Thomas Calculus pg.637
+// Thomas Calculus pg.619
+// https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6928950/
 //https://stackoverflow.com/questions/18187492/simd-vectorize-atan2-using-arm-neon-assembly?noredirect=1&lq=1
 //https://en.wikipedia.org/wiki/Approximation_theory#Chebyshev_approximation
 //https://stackoverflow.com/questions/11930594/calculate-atan2-without-std-functions-or-c99
@@ -69,7 +76,7 @@ f32 ArcTan(f32 Value )
     u32 ux_s  = SignMask & (u32 &)Value;
     
     // Calculate the arctangent in the first quadrant
-    f32 Bx_a = Absolue( B * Value);
+    f32 Bx_a = Absolute( B * Value);
     f32 Num = Bx_a + Value * Value;
     f32 Atan_1q = Num / ( 1.f + Bx_a + Num );
     
@@ -78,8 +85,21 @@ f32 ArcTan(f32 Value )
     return (f32 &)Atan_2q;
 }
 
-float ArcTan2( float y, float x )
+#if 0
+f32 ArcTan2(f32 y, f32 x )
 {
+    f32 Result = 0.0f;
+    /*
+    const double a = x;
+    const double b = y;
+    
+    __m128d SSEThing = _mm_atan2_pd(_mm_load_sd(&a), _mm_load_sd(&b));
+    
+    __m128 SSEOtherThing =  _mm_castpd_ps(SSEThing);
+    
+    _mm_store_ss(&Result, SSEOtherThing);
+    */
+#if 0
     static const uint32_t sign_mask = 0x80000000;
     static const float b = 0.596227f;
     
@@ -91,14 +111,54 @@ float ArcTan2( float y, float x )
     float q = (float)( ( ~ux_s & uy_s ) >> 29 | ux_s >> 30 ); 
     
     // Calculate the arctangent in the first quadrant
-    float bxy_a = Absolue( b * x * y );
+    float bxy_a = Absolute( b * x * y );
     float num = bxy_a + y * y;
     float atan_1q =  num / ( x * x + bxy_a + num );
     
     // Translate it to the proper quadrant
     uint32_t uatan_2q = (ux_s ^ uy_s) | (uint32_t &)atan_1q;
     return q + (float &)uatan_2q;
+#else
+    const float n1 = 0.97239411f;
+    const float n2 = -0.19194795f;    
+    float result = 0.0f;
+    if (x != 0.0f)
+    {
+        const union { float flVal; u32 nVal; } tYSign = { y };
+        const union { float flVal; u32 nVal; } tXSign = { x };
+        if (Absolute(x) >= Absolute(y))
+        {
+            union { float flVal; u32 nVal; } tOffset = { PI32 };
+            // Add or subtract PI based on y's sign.
+            tOffset.nVal |= tYSign.nVal & 0x80000000u;
+            // No offset if x is positive, so multiply by 0 or based on x's sign.
+            tOffset.nVal *= tXSign.nVal >> 31;
+            result = tOffset.flVal;
+            const float z = y / x;
+            result += (n1 + n2 * z * z) * z;
+        }
+        else // Use atan(y/x) = pi/2 - atan(x/y) if |y/x| > 1.
+        {
+            union { float flVal; u32 nVal; } tOffset = { PI32 / 2.0f };
+            // Add or subtract PI/2 based on y's sign.
+            tOffset.nVal |= tYSign.nVal & 0x80000000u;            
+            result = tOffset.flVal;
+            const float z = x / y; 
+            result -= (n1 + n2 * z * z) * z;            
+        }
+    }
+    else if (y > 0.0f)
+    {
+        result = PI32 / 2.0f;
+    }
+    else if (y < 0.0f)
+    {
+        result = -PI32 / 2.0f;
+    }
+#endif
+    return Result;
 } 
+#endif
 
 f32 Square(f32 Value)
 {
@@ -328,6 +388,17 @@ v3f32 operator *(v3f32 A, f32 Scalar)
     return Result;
 }
 
+v3f32 operator /(v3f32 A, f32 Scalar)
+{
+    v3f32 Result = { 0 };
+    
+    Result.x = A.x * (1 / Scalar);
+    Result.y = A.y * (1 / Scalar);
+    Result.z = A.z * (1 / Scalar);
+    
+    return Result;
+}
+
 v3f32 operator *(f32 Scalar, v3f32 A)
 {
     v3f32 Result = A * Scalar;
@@ -343,6 +414,18 @@ v3f32 operator +(v3f32 A, v3f32 B)
     Result.x = A.x + B.x;
     Result.y = A.y + B.y;
     Result.z = A.z + B.z;
+    
+    return Result;
+}
+
+
+v3f32 operator +(v3f32 A, f32 B)
+{
+    v3f32 Result = { 0 };
+    
+    Result.x = A.x + B;
+    Result.y = A.y + B;
+    Result.z = A.z + B;
     
     return Result;
 }
@@ -402,7 +485,7 @@ f32 v3f32Inner(v3f32 A, v3f32 B)
     return Result;
 }
 
-f32 v3f32GetMagnitude(v3f32 A)
+f32 v3f32Magnitude(v3f32 A)
 {
     f32 Result = 0.0f;
     
@@ -415,7 +498,7 @@ v3f32 v3f32Normalize(v3f32 A)
 {
     v3f32 Result = { 0.0f };
     
-    f32 Magnitude = v3f32GetMagnitude(A);
+    f32 Magnitude = v3f32Magnitude(A);
     
     Result = v3f32Init(A.x / Magnitude,
                        A.y / Magnitude,
@@ -611,6 +694,18 @@ m4f32Scale(f32 x, f32 y, f32 z)
     return Result;
 }
 
+static m4f32
+m4f32Rotation2D(f32 cos, f32 sin)
+{
+    m4f32 Result = m4f32Identity();
+    
+    Result.r[0] = v4f32Init( cos, -sin, 0.0f, 0.0f);
+    Result.r[1] = v4f32Init( sin,  cos, 0.0f, 0.0f);
+    Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, 0.0f);
+    Result.r[3] = v4f32Init(0.0f, 0.0f, 0.0f, 1.0f);
+    
+    return Result;
+}
 
 static m4f32
 m4f32Rotation(f32 x, f32 y, f32 z)
@@ -682,15 +777,16 @@ m4f32Viewport(v2f32 WindowDim)
 }
 
 static m4f32
-m4f32Orthographic(f32 LeftPlane,
-                  f32 RightPlane,
-                  f32 BottomPlane,
-                  f32 TopPlane,
-                  f32 NearPlane,
-                  f32 FarPlane)
+m4f32Ortho(f32 LeftPlane,
+           f32 RightPlane,
+           f32 BottomPlane,
+           f32 TopPlane,
+           f32 NearPlane,
+           f32 FarPlane)
 {
     m4f32 Result = { 0 };
-#if 1
+#if 0
+    // NOTE(MIGUEL): This path has the origin in the middle of the viewport
     // NORMALIZING X
     Result.r[0].c[0] = 2.0f / (RightPlane - LeftPlane);
     
@@ -704,6 +800,7 @@ m4f32Orthographic(f32 LeftPlane,
     // DISREGARDING W
     Result.r[3].c[3] = 1.0f;
 #else
+    // NOTE(MIGUEL): This path has the origin in the lowerleft corner of the viewport
     
     // NORMALIZING X
     Result.r[0].c[0] = 2.0f / (RightPlane - LeftPlane);
@@ -723,5 +820,39 @@ m4f32Orthographic(f32 LeftPlane,
     
     return Result;
 }
+
+#if 0
+b32 TestMathLib()
+{
+    b32 Success = 0;
+    
+    char  OutputBuffer[1024];
+    
+    wsprintf(OutputBuffer, "RUNNING MATH LIB TESTS: \n");
+    OutputDebugStringA(OutputBuffer);
+    
+    MemorySetTo(0, OutputBuffer, sizeof(OutputBuffer));
+    
+    // TODO(MIGUEL): TEST SIN
+    // TODO(MIGUEL): TEST COS
+    
+    f32 TestResult  = ArcTan(1.0f / 1.0f);
+    s32 PrintTestResult     = TestResult * 100;
+    s32 PrintExpectedResult = 0.785398f * 100;
+    Success = (TestResult == 0.785398f);
+    
+    wsprintf(OutputBuffer, "Test [Arctan(PI32 / 2.0f)] [%s]"
+             " RESULT: %d.2 | EXECTED: %d.2",
+             Success? "SUCCESS!": "FAILED!",
+             PrintTestResult,
+             PrintExpectedResult);
+    OutputDebugStringA(OutputBuffer);
+    MemorySetTo(0, OutputBuffer, sizeof(OutputBuffer));
+    
+    //ArcTan2();
+    
+    return Success;
+}
+#endif
 
 #endif // PHYSICS_SIM_MATH_H
