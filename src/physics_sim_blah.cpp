@@ -154,36 +154,40 @@ Intersects(f32 *NearestNormalizedCollisionPoint,
 }
 
 void
-DrawVec(render_buffer *RenderBuffer, v3f32 Vec, v3f32 Pos)
+DrawVector(render_buffer *RenderBuffer, v3f32 Vec, v3f32 Pos, memory_arena *LineArena)
 {
-    v3f32 CosSin = v3f32Normalize(Vec);
-    v3f32 Dim    = v3f32Init(400.0f *v3f32Magnitude(Vec), 1.0f, 1.0f);
+    v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, 2, v3f32);
     
-    PushLine(RenderBuffer, Pos, Dim, CosSin);
+    v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
+    PointList[0] = v3f32Init(Pos.x + 0.0f , Pos.y + 0.0f , 0.5);
+    PointList[1] = v3f32Init(Pos.x + Vec.x, Pos.y + Vec.y, 0.5);
+    
+    PushLine(RenderBuffer,
+             v3f32Init(0.0f, 0.0f, 0.0f),
+             v3f32Init(0.0f, 0.0f, 0.0f),
+             PointList, 2, 2.0f, Color);
     
     return;
 }
 
 void
-DrawAABB(render_buffer *RenderBuffer, entity Entity)
+DrawAABB(render_buffer *RenderBuffer, entity *Entity, memory_arena *LineArena)
 {
-    v3f32 Origin = Entity.Pos;
-    v3f32 Offset = Entity.Dim / 2.0f;
+    v3f32 Origin = Entity->Pos;
+    v3f32 Offset = Entity->Dim / 2.0f;
     
-    v3f32 PosL = v3f32Init(Origin.x - Offset.x, Origin.y, Origin.z);
-    v3f32 PosR = v3f32Init(Origin.x + Offset.x, Origin.y, Origin.z);
-    v3f32 PosT = v3f32Init(Origin.x, Origin.y + Offset.y, Origin.z);
-    v3f32 PosB = v3f32Init(Origin.x, Origin.y - Offset.y, Origin.z);
+    v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
+    v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, 4, v3f32);
     
-    v3f32 DimLR = v3f32Init(Entity.Dim.y, 1.0f,  1.0f);
-    v3f32 DimTB = v3f32Init(1.0f, Entity.Dim.x, 1.0f);
+    PointList[0] = v3f32Init(Origin.x + Offset.x, Origin.y + Offset.y, 0.5);
+    PointList[1] = v3f32Init(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
+    PointList[2] = v3f32Init(Origin.x - Offset.x, Origin.y - Offset.y, 0.5);
+    PointList[3] = v3f32Init(Origin.x - Offset.x, Origin.y + Offset.y, 0.5);
     
-    v3f32 CosSin = v3f32Normalize(Entity.Vel);
-    PushRect(RenderBuffer, PosL, DimLR, v3f32Init(0.0, 0.0,0.0));
-    PushRect(RenderBuffer, PosR, DimLR, v3f32Init(0.0, 0.0,0.0));
-    //PushRect(RenderBuffer, PosT, DimTB, v3f32Init(1.0, 1.0,0.0));
-    //PushRect(RenderBuffer, PosB, DimTB, v3f32Init(0.0, 1.0,0.0));
-    
+    PushLine(RenderBuffer,
+             v3f32Init(0.0f, 0.0f, 0.0f),
+             v3f32Init(0.0f, 0.0f, 0.0f),
+             PointList, 4, 2.0f, Color);
     return;
 }
 
@@ -199,6 +203,13 @@ extern "C" SIM_UPDATE(Update)
     
     static f32 RotZ = 0.0f;
     RotZ += 0.2f;
+    
+    
+    memory_arena TextArena = { 0 };
+    MemoryArenaInit(&TextArena, KILOBYTES(3), AppMemory->TransientStorage);
+    memory_arena LineArena = { 0 };
+    MemoryArenaInit(&LineArena, KILOBYTES(5), (u8 *)AppMemory->TransientStorage + TextArena.Size);
+    
     
     entity   *Entity   =  AppState->Entities;
     for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
@@ -250,7 +261,14 @@ extern "C" SIM_UPDATE(Update)
                             Entity->Exists = false;
                         }
                         
-                        //DrawLine(RenderBuffer, Point1, Point2);
+                        v3f32 OldPos = Entity->Pos;
+                        Entity->Pos.x += 300;
+                        Entity->Pos.y += 300;
+                        
+                        DrawVector(RenderBuffer, Entity->Acc, Entity->Pos, &LineArena);
+                        
+                        Entity->Pos.x = OldPos.x;
+                        Entity->Pos.y = OldPos.y;
                         
                         ASSERT(Entity->Exists);
                         
@@ -343,8 +361,15 @@ extern "C" SIM_UPDATE(Update)
     Entity =  AppState->Entities;
     for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
     {
-        DrawAABB(RenderBuffer, *Entity);
+        v3f32 OldPos = Entity->Pos;
+        Entity->Pos.x += 300;
+        Entity->Pos.y += 300;
+        
+        DrawAABB(RenderBuffer, Entity, &LineArena);
         PushRect(RenderBuffer, Entity->Pos, Entity->Dim, Entity->Vel);
+        
+        Entity->Pos.x = OldPos.x;
+        Entity->Pos.y = OldPos.y;
     }
     
     

@@ -695,7 +695,7 @@ m4f32Scale(f32 x, f32 y, f32 z)
 }
 
 static m4f32
-m4f32Rotation2D(f32 cos, f32 sin)
+m4f32Rotate2D(f32 cos, f32 sin)
 {
     m4f32 Result = m4f32Identity();
     
@@ -708,7 +708,7 @@ m4f32Rotation2D(f32 cos, f32 sin)
 }
 
 static m4f32
-m4f32Rotation(f32 x, f32 y, f32 z)
+m4f32Rotate(f32 x, f32 y, f32 z)
 {
     m4f32 Result = { 0 };
     
@@ -746,10 +746,10 @@ m4f32Rotation(f32 x, f32 y, f32 z)
 }
 
 static m4f32
-m4f32Translation(v3f32 PosDelta)
+m4f32Translate(v3f32 PosDelta)
 {
     m4f32 Result = { 0 };
-#if 0
+#if 1
     Result.r[0] = v4f32Init(1.0f, 0.0f, 0.0f, PosDelta.x);
     Result.r[1] = v4f32Init(0.0f, 1.0f, 0.0f, PosDelta.y);
     Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, PosDelta.z);

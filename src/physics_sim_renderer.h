@@ -42,9 +42,11 @@ struct bitmapheader
 
 struct render_line
 {
-    v3f32 *Data;
+    v3f32 *PointData;
+    v4f32  Color;
     u32 Offset;
-    u32 Size;
+    u32 PointCount;
+    f32 Width;
 };
 
 // NOTE(MIGUEL): For constant buffer by update frequency(low, high, static)
@@ -162,7 +164,7 @@ void RenderBufferInit(render_buffer *RenderBuffer)
 }
 
 
-void PushLine(render_buffer *RenderBuffer, v3f32 Pos, v3f32 Dim, v3f32 *PointList, u32 PointCount)
+void PushLine(render_buffer *RenderBuffer, v3f32 Pos, v3f32 Dim, v3f32 *PointList, u32 PointCount, f32 Width, v4f32 Color)
 {
     if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
     {
@@ -171,14 +173,16 @@ void PushLine(render_buffer *RenderBuffer, v3f32 Pos, v3f32 Dim, v3f32 *PointLis
         MemorySetTo(0, Entry, sizeof(render_entry));
         
         render_entry  RenderEntry;
-        RenderEntry.Type  = RenderType_quad;
+        RenderEntry.Type  = RenderType_line;
         RenderEntry.Pos   = Pos;
         RenderEntry.Dim   = Dim;
         // TODO(MIGUEL): Add some checking
-        //render_line *LineData = (v3f32 *)&RenderEntry.Data;
-        //LineData->Data       = PointList;
-        //LineData->PointCount = PointCount;
-        
+        render_line *LineData = (render_line *)&RenderEntry.Data;
+        LineData->PointData  = PointList;
+        LineData->Offset     = 0;
+        LineData->PointCount = PointCount;
+        LineData->Color      = Color;
+        LineData->Width      = Width;
         
         *Entry = RenderEntry;
     }

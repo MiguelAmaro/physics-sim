@@ -713,7 +713,7 @@ win32_HotLoadSimCode(char *SourceDLLName, char *TempDLLName, char *LockedFileNam
 static void
 win32_HotUnloadSimCode(win32_sim_code *Sim)
 {
-    if(Sim)
+    if(Sim->SIM_DLL)
     {
         FreeLibrary(Sim->SIM_DLL);
     }
@@ -1084,11 +1084,11 @@ Render(renderer *Renderer, app_memory *AppMemory)
                     v3f32 CosSin = *((v3f32 *)RenderEntry->Data);
                     
                     // NOTE(MIGUEL): High Update Frequency
-                    m4f32 Trans  = m4f32Translation(RenderEntry->Pos);
-                    m4f32 Rotate = m4f32Rotation2D(CosSin.x, CosSin.y);
+                    m4f32 Trans  = m4f32Translate(RenderEntry->Pos);
+                    m4f32 Rotate = m4f32Rotate2D(CosSin.x, CosSin.y);
                     m4f32 Scale  = m4f32Scale   (RenderEntry->Dim.x,
                                                  RenderEntry->Dim.y, 1.0f);
-                    m4f32 World  = Scale * Trans;
+                    m4f32 World  = Trans  * Rotate * Scale;
                     
                     
                     // NOTE(MIGUEL): This is only because this constant buffer isnt set to
@@ -1099,18 +1099,31 @@ Render(renderer *Renderer, app_memory *AppMemory)
                     Renderer->ConstBufferHigh.Time   = AppState->Time;
                     Renderer->ConstBufferHigh.World  = World;
                     
+                    D3D11_MAPPED_SUBRESOURCE QuadVBufferMap = { 0 };
+                    Renderer->Context->Map(Renderer->QuadVBuffer, 0,
+                                           D3D11_MAP_WRITE_DISCARD,
+                                           0, &QuadVBufferMap);
+                    MemoryCopy(QuadVBufferMap.pData, QuadMeshVerts, sizeof(QuadMeshVerts));
+                    Renderer->Context->Unmap(Renderer->QuadVBuffer, 0);
+                    
+                    D3D11_MAPPED_SUBRESOURCE QuadIBufferMap = { 0 };
+                    Renderer->Context->Map(Renderer->QuadIBuffer, 0,
+                                           D3D11_MAP_WRITE_DISCARD,
+                                           0, &QuadIBufferMap);
+                    MemoryCopy(QuadIBufferMap.pData, QuadMeshIndices, sizeof(QuadMeshIndices));
+                    Renderer->Context->Unmap(Renderer->QuadIBuffer, 0);
+                    
                     D3D11_MAPPED_SUBRESOURCE MappedConst = { 0 };
                     Renderer->Context->Map(Renderer->CBHigh, 0,
                                            D3D11_MAP_WRITE_DISCARD,
                                            0, &MappedConst);
-                    
                     MemoryCopy(MappedConst.pData, &Renderer->ConstBufferHigh, sizeof(gpu_const_high));
                     Renderer->Context->Unmap(Renderer->CBHigh, 0);
                     
                     
                     Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
                     Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
-                    Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
+                    Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBLow);
                     
                     Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
                     Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
@@ -1122,26 +1135,12 @@ Render(renderer *Renderer, app_memory *AppMemory)
                 {} break;
                 case RenderType_line:
                 {
-                    /*render_line = (render_line *)RenderEntry->Data;
+                    render_line *Line = (render_line *)RenderEntry->Data;
                     
-                    //-LINE DATA
-                    f32 LineWidth = 20.0f;
-                    u32 PointCount = 0;
-                    v3f32 PointData[256 * 2] = { 0 };
-                    v4f32  Color = {1.0f, 1.0f, 0.0f, 1.0f};
+                    DrawLine(Renderer, AppState, Line->Width * 1.75f, Line->PointData, Line->PointCount,
+                             v4f32Init(0.0f, 0.0f, 0.0f, 1.0f));
+                    DrawLine(Renderer, AppState, Line->Width, Line->PointData, Line->PointCount, Line->Color);
                     
-                    PointData[0] = v3f32Init(100.0, 100.0, 0.0);
-                    PointCount++;
-                    PointData[1] = v3f32Init(200.0, 200.0, 0.0);
-                    PointCount++;
-                    PointData[2] = v3f32Init(300.0, 400.0, 0.0);
-                    PointCount++;
-                    PointData[3] = v3f32Init(400.0, 300.0, 0.0);
-                    PointCount++;
-                    PointData[4] = v3f32Init(100.0, 900.0, 0.0);
-                    PointCount++;
-                    //DrawLine(Renderer, AppState, LineWidth, PointData, PointCount, Color);
-                    */
                 } break;
             }
         }
@@ -1173,7 +1172,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
                                0, &MappedConst);
         
         MemoryCopy(MappedConst.pData, &Renderer->ConstBufferHigh, sizeof(gpu_const_high));
-        Renderer->Context->Unmap(Renderer->CHigh, 0);
+        Renderer->Context->Unmap(Renderer->CBHigh, 0);
         
         
         Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
@@ -1191,6 +1190,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
 #endif
 #endif
         
+#if 1
         //-LINE DATA
         f32 LineWidth = 5.0f;
         u32 PointCount = 0;
@@ -1214,7 +1214,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
         PointCount++;
         DrawLine(Renderer, AppState, LineWidth, PointData, PointCount, Color);
         DrawLine(Renderer, AppState, LineWidth*0.2f, PointData, PointCount, Color1);
-        
+#endif
         //~/FLIP
         Renderer->SwapChain->Present(0 , 0);
     }
@@ -1409,35 +1409,11 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
                                                 0,
                                                 &Renderer->QuadVBuffer );
         
-        /*
-        D3D11_MAPPED_SUBRESOURCE MappedConst = { 0 };
-        Renderer->Context->Map(Renderer->CBHigh, 0,
-                               D3D11_MAP_WRITE_DISCARD,
-                               0, &MappedConst);
-        
-        MemoryCopy(MappedConst.pData, &Renderer->ConstBufferHigh, sizeof(gpu_const_high2));
-        Renderer->Context->Unmap(Renderer->CHigh, 0);
-        
-        
-        Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-        Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
-        Renderer->Context->VSSetConstantBuffers(2, 1, &Renderer->CBLow);
-        
-        */
-        
-        Renderer->Context->UpdateSubresource(Renderer->QuadVBuffer,
-                                             0,
-                                             0,
-                                             QuadMeshVerts,
-                                             0,
-                                             0);
-        
-        ASSERT(!FAILED(Result));
-        
         D3D11_BUFFER_DESC QuadIndexDesc = { 0 };
-        QuadIndexDesc.Usage     = D3D11_USAGE_DEFAULT;
-        QuadIndexDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-        QuadIndexDesc.ByteWidth = sizeof(u16) * ARRAY_COUNT(QuadMeshIndices);
+        QuadIndexDesc.Usage          = D3D11_USAGE_DYNAMIC;
+        QuadIndexDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        QuadIndexDesc.BindFlags      = D3D11_BIND_INDEX_BUFFER;
+        QuadIndexDesc.ByteWidth      = sizeof(QuadMeshIndices);
         
         D3D11_SUBRESOURCE_DATA QuadIndexData = { 0 };
         QuadIndexData.pSysMem = QuadMeshIndices;
@@ -1810,11 +1786,13 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
                           ShaderFileSize,
                           ShaderLoadingArena))
             {
-                Renderer->VertexShader->Release();
-                Renderer->PixelShader->Release();
                 
-                Renderer->VertexShader = NewVertexShader;
-                Renderer->PixelShader  = NewPixelShader;
+                Renderer->LineVShader->Release();
+                Renderer->LinePShader->Release();
+                
+                
+                Renderer->LineVShader = NewVertexShader;
+                Renderer->LinePShader  = NewPixelShader;
                 
             }
             
@@ -1850,12 +1828,12 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
                           ShaderLoadingArena))
             {
                 
-                Renderer->VertexShader->Release();
-                Renderer->PixelShader->Release();
+                Renderer->LineVShader->Release();
+                Renderer->LinePShader->Release();
                 
                 
-                Renderer->VertexShader = NewVertexShader;
-                Renderer->PixelShader  = NewPixelShader;
+                Renderer->LineVShader = NewVertexShader;
+                Renderer->LinePShader  = NewPixelShader;
                 
             }
             
@@ -1931,7 +1909,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
     
     QueryPerformanceFrequency(&TickFrequency);
     
-    win32_sim_code SimCode;
+    win32_sim_code SimCode = { 0 };
     
     //renderer *Renderer = &g_Renderer;
     
