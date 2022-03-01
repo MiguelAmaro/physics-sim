@@ -47,6 +47,7 @@ struct render_line
     u32 Offset;
     u32 PointCount;
     f32 Width;
+    f32 BorderRatio;
 };
 
 // NOTE(MIGUEL): For constant buffer by update frequency(low, high, static)
@@ -98,7 +99,7 @@ struct renderer
     ID3D11DeviceContext    *Context;
     IDXGISwapChain         *SwapChain;
     D3D_FEATURE_LEVEL       FeatureLevel;
-    
+    ID3D11RasterizerState  *Rasterizer;
     ID3D11RenderTargetView *RenderTargetView;
     ID3D11VertexShader     *VertexShader;
     ID3D11PixelShader      *PixelShader;
@@ -164,15 +165,19 @@ void RenderBufferInit(render_buffer *RenderBuffer)
 }
 
 
-void PushLine(render_buffer *RenderBuffer, v3f32 Pos, v3f32 Dim, v3f32 *PointList, u32 PointCount, f32 Width, v4f32 Color)
+void PushLine(render_buffer *RenderBuffer, v3f32 Pos, v3f32 Dim, v3f32 *PointList, u32 PointCount,
+              f32 Width, f32 BorderRatio, v4f32 Color)
 {
     if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
     {
         render_entry *Entry = RenderBuffer->Entries + RenderBuffer->EntryCount++;
         
-        MemorySetTo(0, Entry, sizeof(render_entry));
+        MemorySetTo(0, Entry, sizeof(render_entry) );
         
         render_entry  RenderEntry;
+        STATIC_ASSERT(sizeof(render_line) <= sizeof(RenderEntry.Data),
+                      render_entry_data_buffer_is_toosmall);
+        
         RenderEntry.Type  = RenderType_line;
         RenderEntry.Pos   = Pos;
         RenderEntry.Dim   = Dim;
@@ -183,6 +188,7 @@ void PushLine(render_buffer *RenderBuffer, v3f32 Pos, v3f32 Dim, v3f32 *PointLis
         LineData->PointCount = PointCount;
         LineData->Color      = Color;
         LineData->Width      = Width;
+        LineData->BorderRatio = BorderRatio;
         
         *Entry = RenderEntry;
     }

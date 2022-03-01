@@ -50,11 +50,16 @@ f32 Sine(f32 Radians)
 
 f32 Absolute(f32 Value)
 {
-    f32 Result = 0.0f;
+    union
+    { 
+        f32 f;
+        u32 u;
+    } Result;
     
-    Result = (f32)(0x7Fffffff & (u32)Value);
+    Result.f  = Value;
+    Result.u &= 0x7fffffff;
     
-    return Result;
+    return Result.f;
 }
 
 // Series and Sequences for function approximation

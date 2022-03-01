@@ -108,8 +108,8 @@ win32_WindowDim g_WindowDim;
 b32             g_WindowResized;
 
 uint32_t g_Running = true;
-uint32_t g_Pause   = false;
-
+b32 gPause     = false;
+b32 gFrameStep = false;
 //-/ FUNCTIONS
 static u32
 S8Length(const char *String)
@@ -778,6 +778,7 @@ ProcessPendingMessages(app_input *Input)
                         
                         case VK_RIGHT:
                         {
+                            gFrameStep = true;
                         } break;
                         
                         case VK_ESCAPE:
@@ -787,6 +788,12 @@ ProcessPendingMessages(app_input *Input)
                         case VK_SPACE: 
                         {
                         } break;
+                        
+                    }
+                    
+                    if((VKCode == 'P') && (IsDown))
+                    {
+                        gPause= !gPause;
                     }
                     
                     if(IsDown)
@@ -987,6 +994,7 @@ void DrawLine(renderer *Renderer,
     Renderer->Context->PSSetShader(Renderer->LinePShader, 0, 0);
     Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
     Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
+    Renderer->Context->RSSetState(Renderer->Rasterizer);
     
     Renderer->Context->DrawIndexedInstanced(JoinIndexCount, JoinCount, 0, 0, 0);
     
@@ -1137,9 +1145,12 @@ Render(renderer *Renderer, app_memory *AppMemory)
                 {
                     render_line *Line = (render_line *)RenderEntry->Data;
                     
-                    DrawLine(Renderer, AppState, Line->Width * 1.75f, Line->PointData, Line->PointCount,
+                    f32 ScaledLineWidth = Line->Width * (1.0f - Line->BorderRatio);
+                    // TODO(MIGUEL): clamp BoarderRatio to [0, 1]
+                    DrawLine(Renderer, AppState, Line->Width, Line->PointData, Line->PointCount,
                              v4f32Init(0.0f, 0.0f, 0.0f, 1.0f));
-                    DrawLine(Renderer, AppState, Line->Width, Line->PointData, Line->PointCount, Line->Color);
+                    DrawLine(Renderer, AppState, ScaledLineWidth,
+                             Line->PointData, Line->PointCount, Line->Color);
                     
                 } break;
             }
@@ -1623,6 +1634,21 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Renderer->LineVShader = NewLineVShader;
     Renderer->LinePShader = NewLinePShader;
     
+    D3D11_RASTERIZER_DESC RasterizerDesc = {0};
+    RasterizerDesc.FillMode = D3D11_FILL_WIREFRAME;
+    RasterizerDesc.CullMode = D3D11_CULL_BACK;
+    RasterizerDesc.FrontCounterClockwise = 0;
+    RasterizerDesc.DepthBias = 0;
+    RasterizerDesc.DepthBiasClamp = 0.0f;
+    RasterizerDesc.SlopeScaledDepthBias = 0.0f;
+    RasterizerDesc.DepthClipEnable = 1;
+    RasterizerDesc.ScissorEnable = 0;
+    RasterizerDesc.MultisampleEnable = 0;
+    RasterizerDesc.AntialiasedLineEnable = 0;
+    
+    Renderer->Device->CreateRasterizerState(&RasterizerDesc,
+                                            &Renderer->Rasterizer);
+    
     return;
 }
 
@@ -1929,7 +1955,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
         g_WindowResized = true;
         
         
-        if(!g_Pause)
+        if(!gPause || gFrameStep)
         {
             memory_arena ShaderLoadingArena;
             
@@ -1973,6 +1999,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
             
             Render(&g_Renderer, AppMemory);
         }
+        gFrameStep = gFrameStep == true?false:false;
         
         QueryPerformanceCounter  (&WorkEndTick);
         WorkTickDelta.QuadPart     = WorkEndTick.QuadPart - WorkStartTick.QuadPart;

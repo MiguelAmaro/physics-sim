@@ -38,7 +38,6 @@ static void SimInit(app_state *AppState)
     Entity->Pos.z = 0.0f;
     Entity->Type = Entity_Wall;
     Entity->Exists = true;
-    
     Entity = EntityWallRight;
     Entity->Dim.x = CommonWidth;
     Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
@@ -74,7 +73,7 @@ static void SimInit(app_state *AppState)
     Entity->Exists = true;
     
     // NOTE(MIGUEL): Moving Entities
-    u32 EntitiesWanted = 1;
+    u32 EntitiesWanted = 10;
     u32 VectorTableSize = ARRAY_COUNT(NormalizedVectorTable);
     for(u32 EntityIndex = 0; EntityIndex < EntitiesWanted; EntityIndex++)
     {
@@ -96,8 +95,8 @@ static void SimInit(app_state *AppState)
             f32 X = NormalizedVectorTable[SeedX % VectorTableSize];
             f32 Y = NormalizedVectorTable[SeedY % VectorTableSize];
             
-            Entity->Pos.x =  0.0f;
-            Entity->Pos.y =  0.0f;
+            Entity->Pos.x =  (u32)(Absolute(X)*100.0f)%300;
+            Entity->Pos.y =  (u32)(Absolute(Y)*100.0f)%300;
             Entity->Pos.z =  0.0f;
             
             Entity->Dim.x = 20.0f;
@@ -108,8 +107,7 @@ static void SimInit(app_state *AppState)
             Entity->Acc.y = 0.0f;
             Entity->Acc.z = 0.0f;
             
-            Entity->Vel.x = 0.3251f;
-            Entity->Vel.y = 0.47999999f;
+            Entity->Vel  = v3f32Normalize(v3f32Init(X, Y, 0.0f));;
             Entity->Vel.z = 0.0f;
             
             Entity->Type = Entity_Moves;
@@ -154,18 +152,32 @@ Intersects(f32 *NearestNormalizedCollisionPoint,
 }
 
 void
+DrawPath(render_buffer *RenderBuffer, v3f32 *PointList, u32 PointCount, v4f32 Color)
+{
+    
+    PushLine(RenderBuffer,
+             v3f32Init(0.0f, 0.0f, 0.0f),
+             v3f32Init(0.0f, 0.0f, 0.0f),
+             PointList, PointCount, 2.0f, 0.9f, Color);
+    
+    return;
+}
+
+void
 DrawVector(render_buffer *RenderBuffer, v3f32 Vec, v3f32 Pos, memory_arena *LineArena)
 {
     v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, 2, v3f32);
     
     v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
+    
+    v3f32 Offset = Vec * 2000.0f;
     PointList[0] = v3f32Init(Pos.x + 0.0f , Pos.y + 0.0f , 0.5);
-    PointList[1] = v3f32Init(Pos.x + Vec.x, Pos.y + Vec.y, 0.5);
+    PointList[1] = v3f32Init(Pos.x + Offset.x, Pos.y + Offset.y, 0.5);
     
     PushLine(RenderBuffer,
              v3f32Init(0.0f, 0.0f, 0.0f),
              v3f32Init(0.0f, 0.0f, 0.0f),
-             PointList, 2, 2.0f, Color);
+             PointList, 2, 2.0f, 0.9f, Color);
     
     return;
 }
@@ -177,17 +189,21 @@ DrawAABB(render_buffer *RenderBuffer, entity *Entity, memory_arena *LineArena)
     v3f32 Offset = Entity->Dim / 2.0f;
     
     v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
-    v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, 4, v3f32);
+    u32 PointCount = 6;
+    v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, PointCount, v3f32);
     
     PointList[0] = v3f32Init(Origin.x + Offset.x, Origin.y + Offset.y, 0.5);
     PointList[1] = v3f32Init(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
     PointList[2] = v3f32Init(Origin.x - Offset.x, Origin.y - Offset.y, 0.5);
     PointList[3] = v3f32Init(Origin.x - Offset.x, Origin.y + Offset.y, 0.5);
+    PointList[4] = v3f32Init(Origin.x + Offset.x, Origin.y + Offset.y, 0.5);
+    // NOTE(MIGUEL): This would be uneccesary if i implement round line caps
+    PointList[5] = v3f32Init(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
     
     PushLine(RenderBuffer,
              v3f32Init(0.0f, 0.0f, 0.0f),
              v3f32Init(0.0f, 0.0f, 0.0f),
-             PointList, 4, 2.0f, Color);
+             PointList, PointCount, 10.0f, 0.8f, Color);
     return;
 }
 
@@ -241,7 +257,11 @@ extern "C" SIM_UPDATE(Update)
             f32 NormalizedCollisionPoint = 1.0f;
             f32 RemainingTravelDistance = v3f32Magnitude(PosDelta);
             
-            for(u32 Iteration = 0; Iteration < 4; Iteration++)
+            u32 MaxCollisonIterations = 4;
+            v3f32 *CollisionPoints = MEMORY_ARENA_PUSH_ARRAY(&LineArena, MaxCollisonIterations, v3f32);
+            
+            u32 Iteration = 0;
+            for(; Iteration < MaxCollisonIterations; Iteration++)
             {
                 entity *TestEntity = AppState->Entities;
                 for(u32 TestEntityIndex = 0; TestEntityIndex < AppState->EntityCount;
@@ -260,15 +280,6 @@ extern "C" SIM_UPDATE(Update)
                         {
                             Entity->Exists = false;
                         }
-                        
-                        v3f32 OldPos = Entity->Pos;
-                        Entity->Pos.x += 300;
-                        Entity->Pos.y += 300;
-                        
-                        DrawVector(RenderBuffer, Entity->Acc, Entity->Pos, &LineArena);
-                        
-                        Entity->Pos.x = OldPos.x;
-                        Entity->Pos.y = OldPos.y;
                         
                         ASSERT(Entity->Exists);
                         
@@ -354,7 +365,21 @@ extern "C" SIM_UPDATE(Update)
                 
 #endif
                 
+                v3f32 OldPos = Entity->Pos;
+                Entity->Pos.x += 300;
+                Entity->Pos.y += 300;
+                // NOTE(MIGUEL): 
+                CollisionPoints[Iteration] = v3f32Init(Entity->Pos.x, Entity->Pos.y, 0.5);
+                //DrawVector(RenderBuffer, Vel, Entity->Pos, &LineArena);
+                
+                Entity->Pos.x = OldPos.x;
+                Entity->Pos.y = OldPos.y;
+                
             }
+            
+            u32 CollisionCount = Iteration;
+            v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
+            DrawPath(RenderBuffer, CollisionPoints, CollisionCount, Color);
         }
     }
     
