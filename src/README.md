@@ -1,6 +1,7 @@
 # LOGS & RESOURCES
 
-## RESOURCES
+### RESOURCES
+
 **DirectX**
 * Beginning DirectX 11 Game Programming
 * Physics Modeling for Game Programmers (DirectX 9)
@@ -22,9 +23,12 @@
 * https://en.wikipedia.org/wiki/Adaptive_mesh_refinement
 * https://en.wikipedia.org/wiki/Quadtree
 
-## LOG
+### LOG
+
 ** NOTE(MIGUEL): (04/08/2022)
 I want to implement a quad tree but theres a few quesetions that i dont know.
 Forexamle this is a spatial query so what units should i choose for it? Meters no?
 There renderer should a be in charge of conversion to pixels... So the what are the
-funtios supposed to do exactly. Ill read about it.
+funtios supposed to do exactly. Ill read about it. What will be the starting grid size be?
+I want to see the quad tree work with few entites a so relativelly about the half the size of the 
+monitor with a low (about 2) entity cap per grid.
