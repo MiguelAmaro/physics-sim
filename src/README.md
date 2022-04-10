@@ -26,6 +26,7 @@
 ### LOG
 
 **NOTE(MIGUEL): (04/08/2022)**
+
 I want to implement a quad tree but theres a few quesetions that i dont know.
 Forexamle this is a spatial query so what units should i choose for it? Meters no?
 There renderer should a be in charge of conversion to pixels... So the what are the
