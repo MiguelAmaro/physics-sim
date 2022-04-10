@@ -58,6 +58,6 @@ float4 PS_Main(PSInput Frag) : SV_TARGET
     
     return Frag.Color;
     
-    //return Tex.Sample(Sampler, Fragment.Tex);
+    //return Tex.Sample(Sampler, Frag.Tex);
     
 }

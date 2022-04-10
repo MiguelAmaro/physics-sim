@@ -14,38 +14,39 @@
 
 enum entity_type
 {
-    Entity_Wall,
-    Entity_Moves,
+  Entity_Wall,
+  Entity_Moves,
 };
 
 struct entity
 {
-    b32 Exists;
-    
-    entity_type Type;
-    
-    v3f32 Pos;
-    v3f32 Vel;
-    v3f32 Acc;
-    
-    v3f32 Dim; /// Unit: Meters
-    
-    f32 EulerX;
-    f32 EulerY;
-    f32 EulerZ;
+  b32 Exists;
+  
+  entity_type Type;
+  
+  v3f32 Pos;
+  v3f32 Vel;
+  v3f32 Acc;
+  
+  v3f32 Dim; /// Unit: Meters
+  
+  f32 EulerX;
+  f32 EulerY;
+  f32 EulerZ;
 };
 
 struct app_state
 {
-    b32 IsInitialized;
-    f32 DeltaTimeMS;
-    f32 Time;
-    
-    memory_arena AssetArena;
-    
-    entity Entities[256];
-    u32 EntityCount;
-    u32 EntityMaxCount;
+  b32 IsInitialized;
+  f32 DeltaTimeMS;
+  f32 Time;
+  
+  memory_arena AssetArena;
+  
+  f32 MeterToPixels:
+  entity Entities[256];
+  u32 EntityCount;
+  u32 EntityMaxCount;
 };
 
 #define SIM_UPDATE( name) void name(app_memory *AppMemory, render_buffer *RenderBuffer)
