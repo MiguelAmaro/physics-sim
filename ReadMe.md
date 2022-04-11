@@ -3,13 +3,13 @@
 This is a project were I try to understand Direct X Api and build a better understanding 
 of linear algebra and physics.
 
+![](https://github.com/MiguelAmaro/physics-sim/blob/main/gifs/collisiondetection.gif?raw=true)
 
 ## Features
 - [ ] Wavefront OBJ file parsing
 - [ ] Immediate mode UI
 - [ ] Profiler
 
-![](https://github.com/MiguelAmaro/physics-sim/blob/main/gifs/collisiondetection.gif?raw=true)
 
 ## DEV 
 **OBJECTIVES**
