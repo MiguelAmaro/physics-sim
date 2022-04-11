@@ -5,6 +5,7 @@
 *.psd
 *.png
 *.jpg
+*.mp4
 
 # Folders
 build/
