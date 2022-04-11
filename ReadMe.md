@@ -9,7 +9,7 @@ of linear algebra and physics.
 - [ ] Immediate mode UI
 - [ ] Profiler
 
-![]()
+![](https://github.com/MiguelAmaro/physics-sim/blob/main/gifs/collisiondetection.gif?raw=true)
 
 ## DEV 
 **OBJECTIVES**
