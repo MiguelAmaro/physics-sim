@@ -1926,9 +1926,9 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   while (g_Running)
   {
     // NOTE(MIGUEL): Start Timer
-    QueryPerformanceCounter  (&WorkStartTick);
     
     ProcessPendingMessages(&Input);
+    QueryPerformanceCounter  (&WorkStartTick);
     
     RECT WindowDim;
     GetClientRect(Window, &WindowDim);
@@ -2023,11 +2023,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   return;
 }
 
-#if ALLOW_CRT
-void WinMain()
-#else
 void WinMainCRTStartup()
-#endif
 {
   //TestMath();
   //return;

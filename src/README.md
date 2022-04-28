@@ -42,5 +42,7 @@ Speed and time are not rigourously defined yet. I'm now working on text renderin
 It should be basic without the use of a cache. The goals is to output basic things like time, delta time,
 and later for introspection. I'm reusing code from drone controller project. Also i should be more attentive when
 swaping parameters of critical and Heavily used funcitons like MemCopy so that prams in calls are all
-updated it could be a huge time sink.
+updated it could be a huge time sink. Fixed the problem where entities jump over walls when doing a drag and
+hold window resize for to long. Dont keep functions that hand os events like window resize in timed sections
+of code. 
 
