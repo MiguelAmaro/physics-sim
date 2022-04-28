@@ -24,11 +24,11 @@ struct entity
   
   entity_type Type;
   
-  v3f32 Pos;
-  v3f32 Vel;
-  v3f32 Acc;
+  v3f Pos;
+  v3f Vel;
+  v3f Acc;
   
-  v3f32 Dim; /// Unit: Meters
+  v3f Dim; /// Unit: Meters
   
   f32 EulerX;
   f32 EulerY;
@@ -43,7 +43,7 @@ struct app_state
   
   memory_arena AssetArena;
   
-  f32 MeterToPixels:
+  f32 MeterToPixels;
   entity Entities[256];
   u32 EntityCount;
   u32 EntityMaxCount;

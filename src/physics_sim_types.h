@@ -5,6 +5,8 @@
 
 #include <stdint.h>
 
+//#define  fn
+#define global
 #define CTASTR2(pre,post) pre ## post
 #define CTASTR(pre,post) CTASTR2(pre,post)
 #define STATIC_ASSERT(cond,msg) \

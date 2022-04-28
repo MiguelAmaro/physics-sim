@@ -138,10 +138,10 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
     
     // NOTE(MIGUEL): Initializing the Mesh Values
     
-    SpritePtr[0].Pos = v3f32Init(ThisEndX  , ThisEndY, 1.0f); // V0
-    SpritePtr[1].Pos = v3f32Init(ThisEndX  , y       , 1.0f); // V1
-    SpritePtr[2].Pos = v3f32Init(ThisStartX, y       , 1.0f); // V2
-    SpritePtr[3].Pos = v3f32Init(ThisStartX, ThisEndY, 1.0f); // V3
+    SpritePtr[0].Pos = V3f(ThisEndX  , ThisEndY, 1.0f); // V0
+    SpritePtr[1].Pos = V3f(ThisEndX  , y       , 1.0f); // V1
+    SpritePtr[2].Pos = V3f(ThisStartX, y       , 1.0f); // V2
+    SpritePtr[3].Pos = V3f(ThisStartX, ThisEndY, 1.0f); // V3
     
     u32 TexLookUp = 0;
     u32 Letter = (u32)Message[Index];
@@ -158,10 +158,10 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
     float TUStart = 01.0f + (TexelWidth * (f32)TexLookUp);
     float TUEnd   = TUStart + TexelWidth;
     
-    SpritePtr[0].TexCoord = v2f32Init(TUEnd  , 0.0f); // V0
-    SpritePtr[1].TexCoord = v2f32Init(TUEnd  , 1.0f); // V1
-    SpritePtr[2].TexCoord = v2f32Init(TUStart, 1.0f); // V2
-    SpritePtr[3].TexCoord = v2f32Init(TUStart, 0.0f); // V3
+    SpritePtr[0].TexCoord = V2f(TUEnd  , 0.0f); // V0
+    SpritePtr[1].TexCoord = V2f(TUEnd  , 1.0f); // V1
+    SpritePtr[2].TexCoord = V2f(TUStart, 1.0f); // V2
+    SpritePtr[3].TexCoord = V2f(TUStart, 0.0f); // V3
     
     SpritePtr += 4;
     
@@ -476,21 +476,21 @@ static LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM WParam, LPA
   /*
 switch (Message)
 {
-  
-  
+    
+    
   case WM_CLOSE:
   case WM_DESTROY:
   {
       PostQuitMessage(0);
   } break;
-  
+    
   //case WM_CHAR:
   case WM_SIZE:
   {
       OutputDebugString("Size Msg...");
-      
+            
   } break;
-  
+    
   default:
   {
       PrintSystemMsg(Message);
@@ -800,11 +800,11 @@ ProcessPendingMessages(app_input *Input)
 }
 
 
-void CircleGeometry(v3f32 *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, u32 Resolution,
+void CircleGeometry(v3f *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, u32 Resolution,
                     u32 *VertCountResult, u32 *IndexCountResult)
 {
-  v3f32 *BufferEnd = (v3f32 *)((u8 *)Buffer + BufferSize);
-  v3f32 *Vert = Buffer;
+  v3f *BufferEnd = (v3f *)((u8 *)Buffer + BufferSize);
+  v3f *Vert = Buffer;
   u32 VertCount = 0;
   
   //ORIGIN
@@ -857,17 +857,21 @@ void CircleGeometry(v3f32 *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize
 void DrawLine(renderer *Renderer,
               app_state *AppState,
               f32 LineWidth,
-              v3f32 *PointList,
+              v3f *PointList,
               u32 PointCount,
-              v4f32 Color)
+              v4f Color)
 {
   //-ROUNDJOINS
   u32 LineCount = PointCount - 1;
   u32 JoinCount = PointCount - 2;
+  f32 WierdOffset = 300.0f;
+  for(u32 Point=0; Point<PointCount;Point++)
+  {
+    PointList[Point] *= AppState->MeterToPixels;
+    PointList[Point] = PointList[Point] + WierdOffset;
+  }
   
-  
-  
-  v3f32 JoinVerts  [16 + 1] = {0};
+  v3f JoinVerts  [16 + 1] = {0};
   u16    JoinIndeces[256] = {0};
   u32 JoinIndexCount = 0;
   CircleGeometry(JoinVerts, sizeof(JoinVerts),
@@ -876,27 +880,27 @@ void DrawLine(renderer *Renderer,
   //-
   
   //-LINE VERT DATA
-  v3f32 LineVData[512] = { 0 };
-  MemoryCopy(LineVData, LineMeshVerts, sizeof(LineMeshVerts));
-  MemoryCopy(LineVData+ARRAY_COUNT(LineMeshVerts), JoinVerts, sizeof(JoinVerts));
+  v3f LineVData[512] = { 0 };
+  MemoryCopy(LineMeshVerts, sizeof(LineMeshVerts), LineVData, sizeof(LineMeshVerts));
+  MemoryCopy(JoinVerts, sizeof(JoinVerts), LineVData+ARRAY_COUNT(LineMeshVerts), sizeof(JoinVerts));
   
   
   D3D11_MAPPED_SUBRESOURCE InstanceMap = { 0 };
   Renderer->Context->Map(Renderer->LineVInstBuffer,
                          0, D3D11_MAP_WRITE_DISCARD, 0,
                          &InstanceMap);
-  MemoryCopy(InstanceMap.pData, PointList, sizeof(v3f32)*PointCount);
+  MemoryCopy(PointList, sizeof(v3f)*PointCount, InstanceMap.pData, sizeof(v3f)*PointCount);
   Renderer->Context->Unmap(Renderer->LineVInstBuffer, 0);
   
   D3D11_MAPPED_SUBRESOURCE Mapped = { 0 };
   Renderer->Context->Map(Renderer->LineVBuffer,
                          0, D3D11_MAP_WRITE_DISCARD, 0,
                          &Mapped);
-  MemoryCopy(Mapped.pData, LineVData, sizeof(LineVData));
+  MemoryCopy(LineVData, sizeof(LineVData), Mapped.pData, sizeof(LineVData));
   Renderer->Context->Unmap(Renderer->LineVBuffer, 0);
   
   ID3D11Buffer *VBuffers[2] = { Renderer->LineVBuffer, Renderer->LineVInstBuffer };
-  UINT          VStrides[2] = { sizeof(v3f32), sizeof(v3f32)};
+  UINT          VStrides[2] = { sizeof(v3f), sizeof(v3f)};
   UINT          VOffsets[2] = { 0, 0};
   Renderer->Context->IASetVertexBuffers(0, 2, VBuffers, VStrides, VOffsets);
   Renderer->Context->IASetInputLayout(Renderer->LineInputLayout);
@@ -916,7 +920,8 @@ void DrawLine(renderer *Renderer,
   Renderer->Context->Map(Renderer->CBHigh, 0,
                          D3D11_MAP_WRITE_DISCARD,
                          0, &MappedHigh);
-  MemoryCopy(MappedHigh.pData, &Renderer->ConstBufferHigh, sizeof(gpu_const_high));
+  MemoryCopy(&Renderer->ConstBufferHigh, sizeof(gpu_const_high),
+             MappedHigh.pData, sizeof(gpu_const_high));
   Renderer->Context->Unmap(Renderer->CBHigh, 0);
   
   Renderer->Context->VSSetShader(Renderer->LineVShader, 0, 0);
@@ -937,7 +942,8 @@ void DrawLine(renderer *Renderer,
   Renderer->Context->Map(Renderer->LineIBuffer,
                          0, D3D11_MAP_WRITE_DISCARD,
                          0, &JIMapped);
-  MemoryCopy(JIMapped.pData, JoinIndeces, sizeof(u16)*JoinIndexCount);
+  MemoryCopy( JoinIndeces, sizeof(u16)*JoinIndexCount,
+             JIMapped.pData, sizeof(u16)*JoinIndexCount);
   Renderer->Context->Unmap(Renderer->LineIBuffer, 0);
   
   Renderer->ConstBufferHigh.Time = AppState->Time;
@@ -948,11 +954,12 @@ void DrawLine(renderer *Renderer,
   Renderer->Context->Map(Renderer->CBHigh, 0,
                          D3D11_MAP_WRITE_DISCARD,
                          0, &MappedHigh);
-  MemoryCopy(MappedHigh.pData, &Renderer->ConstBufferHigh, sizeof(gpu_const_high));
+  MemoryCopy( &Renderer->ConstBufferHigh, sizeof(gpu_const_high), 
+             MappedHigh.pData, sizeof(gpu_const_high));
   Renderer->Context->Unmap(Renderer->CBHigh, 0);
   
   ID3D11Buffer *JVBuffers[2] = { Renderer->LineVBuffer, Renderer->LineVInstBuffer };
-  UINT          JVStrides[2] = { sizeof(v3f32), sizeof(v3f32)};
+  UINT          JVStrides[2] = { sizeof(v3f), sizeof(v3f)};
   UINT          JVOffsets[2] = { sizeof(LineMeshVerts), 0};
   
   Renderer->Context->IASetVertexBuffers(0, 2, JVBuffers, JVStrides, JVOffsets);
@@ -986,11 +993,11 @@ Render(renderer *Renderer, app_memory *AppMemory)
     if(g_WindowResized || !AppState->IsInitialized)
     {
       
-      m4f32 Proj = m4f32Ortho(0.0f, (f32)g_WindowDim.Width, 0.0f,
-                              (f32)g_WindowDim.Height, 0.0f, 100.0f);
+      m4f Proj = M4fOrtho(0.0f, (f32)g_WindowDim.Width, 0.0f,
+                          (f32)g_WindowDim.Height, 0.0f, 100.0f);
       
-      m4f32 View = m4f32Viewport(v2f32Init((f32)g_WindowDim.Width,
-                                           (f32)g_WindowDim.Height)); 
+      m4f View = M4fViewport(V2f((f32)g_WindowDim.Width,
+                                 (f32)g_WindowDim.Height)); 
       Renderer->ConstBufferLow.Proj    = Proj;
       Renderer->ConstBufferLow.View    = View;
       Renderer->ConstBufferLow.Res    = {(f32)g_WindowDim.Width, (f32)g_WindowDim.Height};
@@ -1018,7 +1025,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
                              D3D11_MAP_WRITE_DISCARD,
                              0, &MappedConst);
       
-      MemoryCopy(MappedConst.pData, &Renderer->ConstBufferLow, sizeof(gpu_const_low));
+      MemoryCopy(&Renderer->ConstBufferLow, sizeof(gpu_const_low), MappedConst.pData, sizeof(gpu_const_low));
       Renderer->Context->Unmap(Renderer->CBLow, 0);
       
       g_WindowResized = 0;
@@ -1039,7 +1046,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
     Renderer->Context->RSSetViewports(1, &Viewport );
     
     
-    v4f32 ClearColor = v4f32Init(0.4f, 0.4f, 0.4f, 1.0f);
+    v4f ClearColor = V4f(0.1f, 0.1f, 0.12f, 1.0f);
     
     Renderer->Context->ClearRenderTargetView(Renderer->RenderTargetView, ClearColor.c);
     
@@ -1062,14 +1069,17 @@ Render(renderer *Renderer, app_memory *AppMemory)
           Renderer->Context->IASetIndexBuffer(Renderer->QuadIBuffer, DXGI_FORMAT_R16_UINT, 0 );
           Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
           
-          v3f32 CosSin = *((v3f32 *)RenderEntry->Data);
-          
+          v3f CosSin = *((v3f *)RenderEntry->Data);
+          f32 WierdOffset = 300.0f;
+          RenderEntry->Pos *= AppState->MeterToPixels;
+          RenderEntry->Pos.x+=WierdOffset;
+          RenderEntry->Pos.y+=WierdOffset;
           // NOTE(MIGUEL): High Update Frequency
-          m4f32 Trans  = m4f32Translate(RenderEntry->Pos);
-          m4f32 Rotate = m4f32Rotate2D(CosSin.x, CosSin.y);
-          m4f32 Scale  = m4f32Scale   (RenderEntry->Dim.x,
-                                       RenderEntry->Dim.y, 1.0f);
-          m4f32 World  = Trans  * Rotate * Scale;
+          m4f Trans  = M4fTranslate(RenderEntry->Pos);
+          m4f Rotate = M4fRotate2D(CosSin.x, CosSin.y);
+          m4f Scale  = M4fScale   (RenderEntry->Dim.x*AppState->MeterToPixels,
+                                   RenderEntry->Dim.y*AppState->MeterToPixels, 1.0f);
+          m4f World  = Trans * Rotate * Scale;
           
           
           // NOTE(MIGUEL): This is only because this constant buffer isnt set to
@@ -1084,28 +1094,26 @@ Render(renderer *Renderer, app_memory *AppMemory)
           Renderer->Context->Map(Renderer->QuadVBuffer, 0,
                                  D3D11_MAP_WRITE_DISCARD,
                                  0, &QuadVBufferMap);
-          MemoryCopy(QuadVBufferMap.pData, QuadMeshVerts, sizeof(QuadMeshVerts));
+          MemoryCopy(QuadMeshVerts, sizeof(QuadMeshVerts), QuadVBufferMap.pData, sizeof(QuadMeshVerts));
           Renderer->Context->Unmap(Renderer->QuadVBuffer, 0);
           
           D3D11_MAPPED_SUBRESOURCE QuadIBufferMap = { 0 };
           Renderer->Context->Map(Renderer->QuadIBuffer, 0,
                                  D3D11_MAP_WRITE_DISCARD,
                                  0, &QuadIBufferMap);
-          MemoryCopy(QuadIBufferMap.pData, QuadMeshIndices, sizeof(QuadMeshIndices));
+          MemoryCopy(QuadMeshIndices, sizeof(QuadMeshIndices), QuadIBufferMap.pData, sizeof(QuadMeshIndices));
           Renderer->Context->Unmap(Renderer->QuadIBuffer, 0);
           
           D3D11_MAPPED_SUBRESOURCE MappedConst = { 0 };
           Renderer->Context->Map(Renderer->CBHigh, 0,
                                  D3D11_MAP_WRITE_DISCARD,
                                  0, &MappedConst);
-          MemoryCopy(MappedConst.pData, &Renderer->ConstBufferHigh, sizeof(gpu_const_high));
+          MemoryCopy(&Renderer->ConstBufferHigh, sizeof(gpu_const_high), MappedConst.pData, sizeof(gpu_const_high));
           Renderer->Context->Unmap(Renderer->CBHigh, 0);
-          
           
           Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
           Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
           Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBLow);
-          
           Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
           Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
           Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
@@ -1120,8 +1128,9 @@ Render(renderer *Renderer, app_memory *AppMemory)
           
           f32 ScaledLineWidth = Line->Width * (1.0f - Line->BorderRatio);
           // TODO(MIGUEL): clamp BoarderRatio to [0, 1]
-          DrawLine(Renderer, AppState, Line->Width, Line->PointData, Line->PointCount,
-                   v4f32Init(0.0f, 0.0f, 0.0f, 1.0f));
+          // TODO(MIGUEL): Implement this in the shader
+          //DrawLine(Renderer, AppState, Line->Width, Line->PointData, Line->PointCount,
+          //v4f32Init(0.0f, 0.0f, 0.0f, 1.0f));
           DrawLine(Renderer, AppState, ScaledLineWidth,
                    Line->PointData, Line->PointCount, Line->Color);
           
@@ -1142,10 +1151,10 @@ Render(renderer *Renderer, app_memory *AppMemory)
     Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     
     // NOTE(MIGUEL): High Update Frequency
-    m4f32 Trans  = m4f32Translate(v3f32Init(100.0f, 100.0f, 1.0f));
-    m4f32 Scale  = m4f32Scale   (800.0f, 800.0f, 1.0f);
-    m4f32 Rotate = m4f32Rotate(0.0f, 0.0f, 0.0f);
-    m4f32 World  = Rotate * Scale * Trans;
+    m4f Trans  = M4fTranslate(V3f(100.0f, 100.0f, 1.0f));
+    m4f Scale  = M4fScale   (800.0f, 800.0f, 1.0f);
+    m4f Rotate = M4fRotate(0.0f, 0.0f, 0.0f);
+    m4f World  = Rotate * Scale * Trans;
     
     Renderer->ConstBufferHigh.Time   = AppState->DeltaTimeMS;
     Renderer->ConstBufferHigh.World  = World;
@@ -1155,7 +1164,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
                            D3D11_MAP_WRITE_DISCARD,
                            0, &MappedConst);
     
-    MemoryCopy(MappedConst.pData, &Renderer->ConstBufferHigh, sizeof(gpu_const_high));
+    MemoryCopy(&Renderer->ConstBufferHigh, sizeof(gpu_const_high), MappedConst.pData, sizeof(gpu_const_high));
     Renderer->Context->Unmap(Renderer->CBHigh, 0);
     
     
@@ -1228,8 +1237,8 @@ b32 LoadShader(renderer *Renderer,
   
   // NOTE(MIGUEL): D3DX11CompileFromFile is depricated
   
-  u8 *ShaderCode = MEMORY_ARENA_PUSH_ARRAY(AssetLoadingArena,
-                                           ShaderFileSize, u8);
+  u8 *ShaderCode = ArenaPushArray(AssetLoadingArena,
+                                  ShaderFileSize, u8);
   
   ReadFile(ShaderCodeHandle, ShaderCode, ShaderFileSize, 0, 0);
   CloseHandle(ShaderCodeHandle);
@@ -1326,7 +1335,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     LineVDesc.Usage = D3D11_USAGE_DYNAMIC;
     LineVDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     LineVDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    LineVDesc.ByteWidth = sizeof(v3f32) * 1049;
+    LineVDesc.ByteWidth = sizeof(v3f) * 1049;
     
     Result = Renderer->Device->CreateBuffer(&LineVDesc,
                                             NULL,
@@ -1338,7 +1347,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     LineVInstDesc.Usage = D3D11_USAGE_DYNAMIC;
     LineVInstDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     LineVInstDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    LineVInstDesc.ByteWidth = 256 * (2 * sizeof(v3f32)); //for point a & b
+    LineVInstDesc.ByteWidth = 256 * (2 * sizeof(v3f)); //for point a & b
     
     Result = Renderer->Device->CreateBuffer(&LineVInstDesc,
                                             NULL,
@@ -1563,7 +1572,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
   gLineVLayout[2].SemanticIndex        = 0;
   gLineVLayout[2].Format               = DXGI_FORMAT_R32G32B32_FLOAT;
   gLineVLayout[2].InputSlot            = 1;
-  gLineVLayout[2].AlignedByteOffset    = sizeof(v3f32);
+  gLineVLayout[2].AlignedByteOffset    = sizeof(v3f);
   gLineVLayout[2].InputSlotClass       = D3D11_INPUT_PER_INSTANCE_DATA;
   gLineVLayout[2].InstanceDataStepRate = 1;
   
@@ -1609,6 +1618,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
   
   D3D11_RASTERIZER_DESC RasterizerDesc = {0};
   //RasterizerDesc.FillMode = D3D11_FILL_WIREFRAME;
+  RasterizerDesc.FillMode = D3D11_FILL_SOLID;
   RasterizerDesc.CullMode = D3D11_CULL_BACK;
   RasterizerDesc.FrontCounterClockwise = 0;
   RasterizerDesc.DepthBias = 0;
@@ -1852,14 +1862,14 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   
   memory_arena AssetLoadingArena;
   
-  MemoryArenaInit(&AssetLoadingArena,
-                  AppMemory->TransientStorageSize,
-                  AppMemory->TransientStorage);
+  ArenaInit(&AssetLoadingArena,
+            AppMemory->TransientStorageSize,
+            AppMemory->TransientStorage);
   
   
   D3D11LoadResources(&g_Renderer, &AssetLoadingArena);
   
-  MemoryArenaDiscard(&AssetLoadingArena);
+  ArenaDiscard(&AssetLoadingArena);
   
   g_Renderer.SmileyTex = LoadBitmap("..\\res\\frown.bmp");
   g_Renderer.TextTex   = LoadBitmap("..\\res\\text.bmp");
@@ -1932,9 +1942,9 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
     {
       memory_arena ShaderLoadingArena;
       
-      MemoryArenaInit(&ShaderLoadingArena,
-                      AppMemory->TransientStorageSize,
-                      AppMemory->TransientStorage);
+      ArenaInit(&ShaderLoadingArena,
+                AppMemory->TransientStorageSize,
+                AppMemory->TransientStorage);
       
       D3D11HotLoadShader(&g_Renderer,
                          &g_Renderer.InputLayout,
@@ -1948,7 +1958,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
                               gLineVLayoutCount,
                               &ShaderLoadingArena);
       
-      MemoryArenaDiscard(&ShaderLoadingArena);
+      ArenaDiscard(&ShaderLoadingArena);
       
       FILETIME NewDLLWriteTime = win32_GetLastWriteTime(SimCodeDLLFullPathSource);
       {

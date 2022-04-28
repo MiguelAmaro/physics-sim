@@ -1,21 +1,20 @@
 @echo off
 
 if not exist build mkdir build
-
 set OUTPUT=%1
 
 rem PROJECT INFO / SOURCE FILES
 rem ************************************************************
+set PROJECT_DIR=%cd%
 set PROJECT_NAME=physics_sim
 set SOURCES=^
-F:\Dev\PhysicsSim\src\%PROJECT_NAME%.cpp
+%PROJECT_DIR%\src\%PROJECT_NAME%.cpp 
 
 rem BUILD TOOLS
 rem ************************************************************
 set D3D_DIR=F:\Dev_Tools\DirectXSDKLegacy
 
 
-rem ************************************************************
 rem COMPILER(MSVC) OPTIONS
 rem ************************************************************
 set MSVC_WARNINGS= -wd4700
@@ -44,8 +43,9 @@ set MSVC_FLAGS= ^
 -GS- ^
 -Gs9999999
 
-set MSVC_SEARCH_DIRS= -I..\
-rem -I%D3D_DIR%\Include\
+set MSVC_SEARCH_DIRS=^
+-I%PROJECT_DIR%\ ^
+-I%PROJECT_DIR%\thirdparty\freetype2\include
 
 rem ************************************************************
 rem LINKER(MSVC) OPTIONS
@@ -61,7 +61,8 @@ d3dcompiler.lib ^
 dinput8.lib ^
 dxguid.lib ^
 winmm.lib ^
-ws2_32.lib 
+ws2_32.lib
+
 
 rem %D3D_DIR%\Lib\x64\d3d11.lib ^
 rem %D3D_DIR%\Lib\x64\dxerr.lib ^
@@ -109,7 +110,7 @@ rem  DLL
 echo ============================================================
 pushd build
 
-rem del *.pdb > NUL 2> NUL
+del *.pdb > NUL 2> NUL
 rem echo WAITING FOR PDB > lock.tmp
 
 cl ^
@@ -121,6 +122,7 @@ F:\Dev\PhysicsSim\src\%PROJECT_NAME%_blah.cpp ^
 -LD ^
 /link ^
 -PDB:%PROJECT_NAME%_%random%.pdb ^
+%PROJECT_DIR%"\thirdparty\freetype2\release dll\win64\freetype.lib" ^
 -EXPORT:Update
 
 rem del lock.tmp

@@ -3,7 +3,6 @@
 #ifndef PHYSICS_SIM_MATH_H
 #define PHYSICS_SIM_MATH_H
 
-#include "physics_sim_memory.h"
 #include "physics_sim_types.h"
 #include <immintrin.h>
 #include "thirdparty\sse_mathisfun.h"
@@ -11,6 +10,10 @@
 
 
 //-/ MACROS
+
+#define Min(a, b) ((a<b)?a:b)
+#define Max(a, b) ((a>b)?a:b)
+#define Clamp(x, Low, High) (Min(Max(Low, x), High))
 
 #define KILOBYTES(size) (         (size) * 1024LL)
 
@@ -187,7 +190,7 @@ f32 Root(f32 Value)
 
 //- VECTORS 
 
-union v2f32
+union v2f
 {
   struct
   {
@@ -197,7 +200,7 @@ union v2f32
   f32 c[2];
 };
 
-union v2s32
+union v2s
 {
   struct
   {
@@ -207,7 +210,7 @@ union v2s32
   s32 c[2];
 };
 
-union v3f32
+union v3f
 {
   struct
   {
@@ -223,13 +226,13 @@ union v3f32
   };
   struct
   {
-    v2f32 xy;
+    v2f xy;
     f32    z;
   };
   f32 c[3];
 };
 
-union v4f32
+union v4f
 {
   struct
   {
@@ -254,18 +257,18 @@ union r2f
 {
   struct
   {
-    v2f32 min;
-    v2f32 max;
+    v2f min;
+    v2f max;
   };
   f32 e[2];
 };
 
-union r2si
+union r2s
 {
   struct
   {
-    v2s32 min;
-    v2s32 max;
+    v2s min;
+    v2s max;
   };
   s32 e[4];
 };
@@ -273,24 +276,24 @@ union r2si
 
 //- MATRICES 
 
-union m2f32
+union m2f
 {
-  v2f32 r[2];
+  v2f r[2];
   f32   e[4];
   f32   x[2][2];
 };
 
 union m3f32
 {
-  v3f32 r[3];
+  v3f r[3];
   f32   e[9];
   f32   x[3][3];
 };
 
 
-union m4f32
+union m4f
 {
-  v4f32 r[4];
+  v4f r[4];
   f32   e[16];
   f32   x[4][4];
 };
@@ -299,9 +302,9 @@ union m4f32
 //~ OPERATIORS & FUNCTIONS
 
 //- VECTOR 2D 
-v2f32 operator +(v2f32 A, v2f32 B)
+v2f operator +(v2f A, v2f B)
 {
-  v2f32 Result = { 0 };
+  v2f Result = { 0 };
   
   Result.x = A.x + B.x;
   Result.y = A.y + B.y;
@@ -309,9 +312,9 @@ v2f32 operator +(v2f32 A, v2f32 B)
   return Result;
 }
 
-v2f32 operator +(v2f32 A, f32 Scalar)
+v2f operator +(v2f A, f32 Scalar)
 {
-  v2f32 Result = { 0 };
+  v2f Result = { 0 };
   
   Result.x = A.x + Scalar;
   Result.y = A.y + Scalar;
@@ -319,16 +322,16 @@ v2f32 operator +(v2f32 A, f32 Scalar)
   return Result;
 }
 
-v2f32 operator +(f32 Scalar, v2f32 A)
+v2f operator +(f32 Scalar, v2f A)
 {
-  v2f32 Result = A + Scalar;
+  v2f Result = A + Scalar;
   
   return Result;
 }
 
-v2f32 operator -(v2f32 A, v2f32 B)
+v2f operator -(v2f A, v2f B)
 {
-  v2f32 Result = { 0 };
+  v2f Result = { 0 };
   
   Result.x = A.x - B.x;
   Result.y = A.y - B.y;
@@ -337,9 +340,9 @@ v2f32 operator -(v2f32 A, v2f32 B)
 }
 
 
-v2f32 operator *(v2f32 A, f32 Scalar)
+v2f operator *(v2f A, f32 Scalar)
 {
-  v2f32 Result = { 0 };
+  v2f Result = { 0 };
   
   Result.x = A.x * Scalar;
   Result.y = A.y * Scalar;
@@ -347,17 +350,17 @@ v2f32 operator *(v2f32 A, f32 Scalar)
   return Result;
 }
 
-v2f32 operator *(f32 Scalar, v2f32 A)
+v2f operator *(f32 Scalar, v2f A)
 {
-  v2f32 Result = A * Scalar;
+  v2f Result = A * Scalar;
   
   return Result;
 }
 
 
-void operator +=(v2f32 &A, v2f32 B)
+void operator +=(v2f &A, v2f B)
 {
-  v2f32 *Result = &A;
+  v2f *Result = &A;
   
   Result->x = A.x + B.x;
   Result->y = A.y + B.y;
@@ -366,9 +369,9 @@ void operator +=(v2f32 &A, v2f32 B)
 }
 
 
-v2f32 v2f32Init(f32 x, f32 y)
+v2f V2f(f32 x, f32 y)
 {
-  v2f32 Result = { 0 };
+  v2f Result = { 0 };
   
   Result.x = x;
   Result.y = y;
@@ -376,7 +379,7 @@ v2f32 v2f32Init(f32 x, f32 y)
   return Result;
 }
 
-f32 v2f32Inner(v2f32 A, v2f32 B)
+f32 V2fInner(v2f A, v2f B)
 {
   f32 Result = 0.0f;
   
@@ -388,9 +391,9 @@ f32 v2f32Inner(v2f32 A, v2f32 B)
 
 //- VECTOR 3D 
 
-v3f32 v3f32Init(f32 x, f32 y, f32 z)
+v3f V3f(f32 x, f32 y, f32 z)
 {
-  v3f32 Result = { 0 };
+  v3f Result = { 0 };
   
   Result.x = x;
   Result.y = y;
@@ -399,9 +402,9 @@ v3f32 v3f32Init(f32 x, f32 y, f32 z)
   return Result;
 }
 
-v3f32 operator *(v3f32 A, f32 Scalar)
+v3f operator *(v3f A, f32 Scalar)
 {
-  v3f32 Result = { 0 };
+  v3f Result = { 0 };
   
   Result.x = A.x * Scalar;
   Result.y = A.y * Scalar;
@@ -410,9 +413,16 @@ v3f32 operator *(v3f32 A, f32 Scalar)
   return Result;
 }
 
-v3f32 operator /(v3f32 A, f32 Scalar)
+v3f operator *(f32 Scalar, v3f A)
 {
-  v3f32 Result = { 0 };
+  v3f Result = A * Scalar;
+  
+  return Result;
+}
+
+v3f operator /(v3f A, f32 Scalar)
+{
+  v3f Result = { 0 };
   
   Result.x = A.x * (1 / Scalar);
   Result.y = A.y * (1 / Scalar);
@@ -421,17 +431,9 @@ v3f32 operator /(v3f32 A, f32 Scalar)
   return Result;
 }
 
-v3f32 operator *(f32 Scalar, v3f32 A)
+v3f operator +(v3f A, v3f B)
 {
-  v3f32 Result = A * Scalar;
-  
-  return Result;
-}
-
-
-v3f32 operator +(v3f32 A, v3f32 B)
-{
-  v3f32 Result = { 0 };
+  v3f Result = { 0 };
   
   Result.x = A.x + B.x;
   Result.y = A.y + B.y;
@@ -441,9 +443,9 @@ v3f32 operator +(v3f32 A, v3f32 B)
 }
 
 
-v3f32 operator +(v3f32 A, f32 B)
+v3f operator +(v3f A, f32 B)
 {
-  v3f32 Result = { 0 };
+  v3f Result = { 0 };
   
   Result.x = A.x + B;
   Result.y = A.y + B;
@@ -452,9 +454,14 @@ v3f32 operator +(v3f32 A, f32 B)
   return Result;
 }
 
-void operator +=(v3f32 &A, v3f32 B)
+v3f operator +(f32 B, v3f A)
 {
-  v3f32 *Result = &A;
+  return A + B;
+}
+
+void operator +=(v3f &A, v3f B)
+{
+  v3f *Result = &A;
   
   Result->x = A.x + B.x;
   Result->y = A.y + B.y;
@@ -463,9 +470,9 @@ void operator +=(v3f32 &A, v3f32 B)
   return;
 }
 
-void operator -=(v3f32 &A, v3f32 B)
+void operator -=(v3f &A, v3f B)
 {
-  v3f32 *Result = &A;
+  v3f *Result = &A;
   
   Result->x = A.x - B.x;
   Result->y = A.y - B.y;
@@ -474,9 +481,20 @@ void operator -=(v3f32 &A, v3f32 B)
   return;
 }
 
-void operator *=(v3f32 &A, f32 Scalar)
+v3f operator -(v3f &A)
 {
-  v3f32 *Result = &A;
+  v3f Result = { 0 };
+  
+  Result.x = -A.x;
+  Result.y = -A.y;
+  Result.z = -A.z;
+  
+  return Result;
+}
+
+void operator *=(v3f &A, f32 Scalar)
+{
+  v3f *Result = &A;
   
   Result->x = A.x * Scalar;
   Result->y = A.y * Scalar;
@@ -485,7 +503,7 @@ void operator *=(v3f32 &A, f32 Scalar)
   return;
 }
 
-b32 operator ==(v3f32 A, v3f32 B)
+b32 operator ==(v3f A, v3f B)
 {
   b32 Result = 0;
   u32 Index  = 0;
@@ -496,7 +514,7 @@ b32 operator ==(v3f32 A, v3f32 B)
   return Result;
 }
 
-f32 v3f32Inner(v3f32 A, v3f32 B)
+f32 V3fInner(v3f A, v3f B)
 {
   f32 Result = 0.0f;
   
@@ -507,32 +525,43 @@ f32 v3f32Inner(v3f32 A, v3f32 B)
   return Result;
 }
 
-f32 v3f32Magnitude(v3f32 A)
+f32 V3fLength(v3f A)
 {
   f32 Result = 0.0f;
   
-  Result = Root(v3f32Inner(A, A));
+  Result = Root(V3fInner(A, A));
   
   return Result;
 }
 
-v3f32 v3f32Normalize(v3f32 A)
+v3f V3fNormalize(v3f A)
 {
-  v3f32 Result = { 0.0f };
+  v3f Result = { 0.0f };
   
-  f32 Magnitude = v3f32Magnitude(A);
+  f32 Magnitude = V3fLength(A);
   
-  Result = v3f32Init(A.x / Magnitude,
-                     A.y / Magnitude,
-                     A.z / Magnitude);
+  Result = V3f(A.x / Magnitude,
+               A.y / Magnitude,
+               A.z / Magnitude);
+  
+  return Result;
+}
+
+v3f V3fHadamard(v3f A, v3f B)
+{
+  v3f Result = {0};
+  
+  Result.x = A.x * B.x;
+  Result.y = A.y * B.y;
+  Result.z = A.z * B.z;
   
   return Result;
 }
 
 //- VECTOR 4D 
-v4f32 v4f32Init(f32 x, f32 y, f32 z, f32 w)
+v4f V4f(f32 x, f32 y, f32 z, f32 w)
 {
-  v4f32 Result = { 0 };
+  v4f Result = { 0 };
   
   Result.x = x;
   Result.y = y;
@@ -544,7 +573,7 @@ v4f32 v4f32Init(f32 x, f32 y, f32 z, f32 w)
 
 //- RECTANGLE 2D 
 
-b32 r2fIsOutside(r2f Bounds, v2f32 Pos)
+b32 R2fIsOutside(r2f Bounds, v2f Pos)
 {
   b32 Result = 1;
   
@@ -556,7 +585,7 @@ b32 r2fIsOutside(r2f Bounds, v2f32 Pos)
   return Result;
 }
 
-b32 r2fIsInside(r2f Bounds, v2f32 Pos)
+b32 R2fIsInside(r2f Bounds, v2f Pos)
 {
   b32 Result = 1;
   
@@ -568,7 +597,7 @@ b32 r2fIsInside(r2f Bounds, v2f32 Pos)
   return Result;
 }
 
-r2f r2fCenteredDim(v2f32 Dim)
+r2f R2fCenteredDim(v2f Dim)
 {
   r2f Result = { 0 };
   
@@ -580,11 +609,11 @@ r2f r2fCenteredDim(v2f32 Dim)
   return Result;
 }
 
-r2f r2fAddRadiusTo(r2f Bounds, v2f32 Dim)
+r2f R2fAddRadiusTo(r2f Bounds, v2f Dim)
 {
   r2f Result = Bounds;
   
-  v2f32 Radius = Dim * 0.5f;
+  v2f Radius = Dim * 0.5f;
   
   Result.min.x += -1.0f * Radius.x;
   Result.min.y += -1.0f * Radius.y;
@@ -597,7 +626,7 @@ r2f r2fAddRadiusTo(r2f Bounds, v2f32 Dim)
 
 //- MATRIX 2D 
 static void
-m2f32Scale(m2f32 *Matrix, f32 ScaleX, f32 ScaleY)
+M2fScale(m2f *Matrix, f32 ScaleX, f32 ScaleY)
 {
   Matrix->x[0][0] = ScaleX;
   Matrix->x[1][1] = ScaleY;
@@ -609,7 +638,7 @@ m2f32Scale(m2f32 *Matrix, f32 ScaleX, f32 ScaleY)
 //- MATRIX 3D 
 #if 0
 static void
-m2f32Scale(m2f32 *Matrix, f32 ScaleX, f32 ScaleY)
+M2fScale(m2f *Matrix, f32 ScaleX, f32 ScaleY)
 {
   Matrix->x[0][0] = ScaleX;
   Matrix->x[1][1] = ScaleY;
@@ -618,35 +647,35 @@ m2f32Scale(m2f32 *Matrix, f32 ScaleX, f32 ScaleY)
 }
 
 static m3f32
-m3f32Rotation(f32 x, f32 y)
+M3f32Rotation(f32 x, f32 y)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
   
-  m4f32 RotationX = m4f32Identity();
+  M4f RotationX = M4fIdentity();
   if(x != 0.0f)
   {
-    RotationX.r[0] = v4f32Init(1.0f,      0.0f, 0.0f);
-    RotationX.r[1] = v4f32Init(0.0f, Cosine(x), 0.0f);
-    RotationX.r[2] = v4f32Init(0.0f,      0.0f, 1.0f);
+    RotationX.r[0] = V4f(1.0f,      0.0f, 0.0f);
+    RotationX.r[1] = V4f(0.0f, Cosine(x), 0.0f);
+    RotationX.r[2] = V4f(0.0f,      0.0f, 1.0f);
   }
   
-  m4f32 RotationY = m4f32Identity();
+  M4f RotationY = M4fIdentity();
   if(y != 0.0f)
   {
-    RotationY.r[0] = v4f32Init(Cosine(y), 0.0f,   Sine(y), 0.0f);
-    RotationY.r[1] = v4f32Init(     0.0f, 1.0f,      0.0f, 0.0f);
-    RotationY.r[2] = v4f32Init( -Sine(y), 0.0f, Cosine(y), 0.0f);
-    RotationY.r[3] = v4f32Init(     0.0f, 0.0f,      0.0f, 1.0f);
+    RotationY.r[0] = V4f(Cosine(y), 0.0f,   Sine(y), 0.0f);
+    RotationY.r[1] = V4f(     0.0f, 1.0f,      0.0f, 0.0f);
+    RotationY.r[2] = V4f( -Sine(y), 0.0f, Cosine(y), 0.0f);
+    RotationY.r[3] = V4f(     0.0f, 0.0f,      0.0f, 1.0f);
   }
   
   
-  m4f32 RotationZ = m4f32Identity();
+  M4f RotationZ = M4fIdentity();
   if(z != 0.0f)
   {
-    RotationZ.r[0] = v4f32Init(Cosine(z),  -Sine(z), 0.0f, 0.0f);
-    RotationZ.r[1] = v4f32Init(  Sine(z), Cosine(z), 0.0f, 0.0f);
-    RotationZ.r[2] = v4f32Init(     0.0f,      0.0f, 1.0f, 0.0f);
-    RotationZ.r[3] = v4f32Init(     0.0f,      0.0f, 0.0f, 1.0f);
+    RotationZ.r[0] = V4f(Cosine(z),  -Sine(z), 0.0f, 0.0f);
+    RotationZ.r[1] = V4f(  Sine(z), Cosine(z), 0.0f, 0.0f);
+    RotationZ.r[2] = V4f(     0.0f,      0.0f, 1.0f, 0.0f);
+    RotationZ.r[3] = V4f(     0.0f,      0.0f, 0.0f, 1.0f);
   }
   
   Result = RotationX * RotationY * RotationZ;
@@ -657,9 +686,9 @@ m3f32Rotation(f32 x, f32 y)
 
 //- MATRIX 4D 
 
-m4f32 operator *(m4f32 A, m4f32 B)
+m4f operator *(m4f A, m4f B)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
   
   for(u32 ScanRow = 0; ScanRow < 4; ScanRow++)
   {
@@ -678,7 +707,7 @@ m4f32 operator *(m4f32 A, m4f32 B)
 }
 
 
-b32 operator ==(m4f32 A, m4f32 B)
+b32 operator ==(m4f A, m4f B)
 {
   b32 Result = 0;
   u32 Index  = 0;
@@ -690,76 +719,76 @@ b32 operator ==(m4f32 A, m4f32 B)
 }
 
 
-static m4f32
-m4f32Identity(void)
+static m4f
+M4fIdentity(void)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
   
-  Result.r[0] = v4f32Init(1.0f, 0.0f, 0.0f, 0.0f);
-  Result.r[1] = v4f32Init(0.0f, 1.0f, 0.0f, 0.0f);
-  Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, 0.0f);
-  Result.r[3] = v4f32Init(0.0f, 0.0f, 0.0f, 1.0f);
+  Result.r[0] = V4f(1.0f, 0.0f, 0.0f, 0.0f);
+  Result.r[1] = V4f(0.0f, 1.0f, 0.0f, 0.0f);
+  Result.r[2] = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+  Result.r[3] = V4f(0.0f, 0.0f, 0.0f, 1.0f);
   
   return Result;
 }
 
-static m4f32
-m4f32Scale(f32 x, f32 y, f32 z)
+static m4f
+M4fScale(f32 x, f32 y, f32 z)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
   
-  Result.r[0] = v4f32Init(x   , 0.0f, 0.0f, 0.0f);
-  Result.r[1] = v4f32Init(0.0f, y   , 0.0f, 0.0f);
-  Result.r[2] = v4f32Init(0.0f, 0.0f, z   , 0.0f);
-  Result.r[3] = v4f32Init(0.0f, 0.0f, 0.0f, 1.0f);
+  Result.r[0] = V4f(x   , 0.0f, 0.0f, 0.0f);
+  Result.r[1] = V4f(0.0f, y   , 0.0f, 0.0f);
+  Result.r[2] = V4f(0.0f, 0.0f, z   , 0.0f);
+  Result.r[3] = V4f(0.0f, 0.0f, 0.0f, 1.0f);
   
   return Result;
 }
 
-static m4f32
-m4f32Rotate2D(f32 cos, f32 sin)
+static m4f
+M4fRotate2D(f32 cos, f32 sin)
 {
-  m4f32 Result = m4f32Identity();
+  m4f Result = M4fIdentity();
   
-  Result.r[0] = v4f32Init( cos, -sin, 0.0f, 0.0f);
-  Result.r[1] = v4f32Init( sin,  cos, 0.0f, 0.0f);
-  Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, 0.0f);
-  Result.r[3] = v4f32Init(0.0f, 0.0f, 0.0f, 1.0f);
+  Result.r[0] = V4f( cos, -sin, 0.0f, 0.0f);
+  Result.r[1] = V4f( sin,  cos, 0.0f, 0.0f);
+  Result.r[2] = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+  Result.r[3] = V4f(0.0f, 0.0f, 0.0f, 1.0f);
   
   return Result;
 }
 
-static m4f32
-m4f32Rotate(f32 x, f32 y, f32 z)
+static m4f
+M4fRotate(f32 x, f32 y, f32 z)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
   
-  m4f32 RotationX = m4f32Identity();
+  m4f RotationX = M4fIdentity();
   if(x != 0.0f)
   {
-    RotationX.r[0] = v4f32Init(1.0f,      0.0f,      0.0f, 0.0f);
-    RotationX.r[1] = v4f32Init(0.0f, Cosine(x),  -Sine(x), 0.0f);
-    RotationX.r[2] = v4f32Init(0.0f,   Sine(x), Cosine(x), 0.0f);
-    RotationX.r[3] = v4f32Init(0.0f,      0.0f,      0.0f, 1.0f);
+    RotationX.r[0] = V4f(1.0f,      0.0f,      0.0f, 0.0f);
+    RotationX.r[1] = V4f(0.0f, Cosine(x),  -Sine(x), 0.0f);
+    RotationX.r[2] = V4f(0.0f,   Sine(x), Cosine(x), 0.0f);
+    RotationX.r[3] = V4f(0.0f,      0.0f,      0.0f, 1.0f);
   }
   
-  m4f32 RotationY = m4f32Identity();
+  m4f RotationY = M4fIdentity();
   if(y != 0.0f)
   {
-    RotationY.r[0] = v4f32Init(Cosine(y), 0.0f,   Sine(y), 0.0f);
-    RotationY.r[1] = v4f32Init(     0.0f, 1.0f,      0.0f, 0.0f);
-    RotationY.r[2] = v4f32Init( -Sine(y), 0.0f, Cosine(y), 0.0f);
-    RotationY.r[3] = v4f32Init(     0.0f, 0.0f,      0.0f, 1.0f);
+    RotationY.r[0] = V4f(Cosine(y), 0.0f,   Sine(y), 0.0f);
+    RotationY.r[1] = V4f(     0.0f, 1.0f,      0.0f, 0.0f);
+    RotationY.r[2] = V4f( -Sine(y), 0.0f, Cosine(y), 0.0f);
+    RotationY.r[3] = V4f(     0.0f, 0.0f,      0.0f, 1.0f);
   }
   
   
-  m4f32 RotationZ = m4f32Identity();
+  m4f RotationZ = M4fIdentity();
   if(z != 0.0f)
   {
-    RotationZ.r[0] = v4f32Init(Cosine(z),  -Sine(z), 0.0f, 0.0f);
-    RotationZ.r[1] = v4f32Init(  Sine(z), Cosine(z), 0.0f, 0.0f);
-    RotationZ.r[2] = v4f32Init(     0.0f,      0.0f, 1.0f, 0.0f);
-    RotationZ.r[3] = v4f32Init(     0.0f,      0.0f, 0.0f, 1.0f);
+    RotationZ.r[0] = V4f(Cosine(z),  -Sine(z), 0.0f, 0.0f);
+    RotationZ.r[1] = V4f(  Sine(z), Cosine(z), 0.0f, 0.0f);
+    RotationZ.r[2] = V4f(     0.0f,      0.0f, 1.0f, 0.0f);
+    RotationZ.r[3] = V4f(     0.0f,      0.0f, 0.0f, 1.0f);
   }
   
   Result = RotationX * RotationY * RotationZ;
@@ -767,46 +796,46 @@ m4f32Rotate(f32 x, f32 y, f32 z)
   return Result;
 }
 
-static m4f32
-m4f32Translate(v3f32 PosDelta)
+static m4f
+M4fTranslate(v3f PosDelta)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
 #if 1
-  Result.r[0] = v4f32Init(1.0f, 0.0f, 0.0f, PosDelta.x);
-  Result.r[1] = v4f32Init(0.0f, 1.0f, 0.0f, PosDelta.y);
-  Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, PosDelta.z);
-  Result.r[3] = v4f32Init(0.0f, 0.0f, 0.0f, 1.0f);
+  Result.r[0] = V4f(1.0f, 0.0f, 0.0f, PosDelta.x);
+  Result.r[1] = V4f(0.0f, 1.0f, 0.0f, PosDelta.y);
+  Result.r[2] = V4f(0.0f, 0.0f, 1.0f, PosDelta.z);
+  Result.r[3] = V4f(0.0f, 0.0f, 0.0f, 1.0f);
 #else
-  Result.r[0] = v4f32Init(1.0f, 0.0f, 0.0f, 0.0f);
-  Result.r[1] = v4f32Init(0.0f, 1.0f, 0.0f, 0.0f);
-  Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, 0.0f);
-  Result.r[3] = v4f32Init(PosDelta.x, PosDelta.y, PosDelta.z, 1.0f);
+  Result.r[0] = V4f(1.0f, 0.0f, 0.0f, 0.0f);
+  Result.r[1] = V4f(0.0f, 1.0f, 0.0f, 0.0f);
+  Result.r[2] = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+  Result.r[3] = V4f(PosDelta.x, PosDelta.y, PosDelta.z, 1.0f);
 #endif
   return Result;
 }
 
-static m4f32
-m4f32Viewport(v2f32 WindowDim)
+static m4f
+M4fViewport(v2f WindowDim)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
   
-  Result.r[0] = v4f32Init(WindowDim.x / 2.0f, 0.0f, 0.0f, (WindowDim.x - 1.0f) / 2.0f);
-  Result.r[1] = v4f32Init(0.0f, WindowDim.y / 2.0f, 0.0f, (WindowDim.y - 1.0f) / 2.0f);
-  Result.r[2] = v4f32Init(0.0f, 0.0f, 1.0f, 0.0f);
-  Result.r[3] = v4f32Init(0.0f, 0.0f, 0.0f, 1.0f);
+  Result.r[0] = V4f(WindowDim.x / 2.0f, 0.0f, 0.0f, (WindowDim.x - 1.0f) / 2.0f);
+  Result.r[1] = V4f(0.0f, WindowDim.y / 2.0f, 0.0f, (WindowDim.y - 1.0f) / 2.0f);
+  Result.r[2] = V4f(0.0f, 0.0f, 1.0f, 0.0f);
+  Result.r[3] = V4f(0.0f, 0.0f, 0.0f, 1.0f);
   
   return Result;
 }
 
-static m4f32
-m4f32Ortho(f32 LeftPlane,
-           f32 RightPlane,
-           f32 BottomPlane,
-           f32 TopPlane,
-           f32 NearPlane,
-           f32 FarPlane)
+static m4f
+M4fOrtho(f32 LeftPlane,
+         f32 RightPlane,
+         f32 BottomPlane,
+         f32 TopPlane,
+         f32 NearPlane,
+         f32 FarPlane)
 {
-  m4f32 Result = { 0 };
+  m4f Result = { 0 };
 #if 0
   // NOTE(MIGUEL): This path has the origin in the middle of the viewport
   // NORMALIZING X

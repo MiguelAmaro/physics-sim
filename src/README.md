@@ -33,3 +33,14 @@ There renderer should a be in charge of conversion to pixels... So the what are 
 funtios supposed to do exactly. Ill read about it. What will be the starting grid size be?
 I want to see the quad tree work with few entites a so relativelly about the half the size of the 
 monitor with a low (about 2) entity cap per grid.
+
+
+**NOTE(MIGUEL): (04/28/2022)**
+
+I changed the the units of entities to meter with a conversion ratio that i use in the renderer.
+Speed and time are not rigourously defined yet. I'm now working on text rendering using freetype.
+It should be basic without the use of a cache. The goals is to output basic things like time, delta time,
+and later for introspection. I'm reusing code from drone controller project. Also i should be more attentive when
+swaping parameters of critical and Heavily used funcitons like MemCopy so that prams in calls are all
+updated it could be a huge time sink.
+

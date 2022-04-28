@@ -3,6 +3,12 @@
 #include "physics_sim_assets.h"
 #include "windows.h"
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+global FT_Library FreeType;
+global FT_Face    Face;
+
 #define QUADTREE_CAP (4)
 struct qtree
 {
@@ -31,6 +37,16 @@ void QtreeQueryRange()
 
 static void SimInit(app_state *AppState)
 {
+  if (FT_Init_FreeType(&FreeType))
+  {
+    OutputDebugString("FreeType Error: Could not init FreeType Library");
+    ASSERT(0);
+  }
+  if (FT_New_Face(FreeType, "..\\res\\cour.ttf", 0, &Face))
+  {
+    OutputDebugString("FreeType Error: Could not load Font");
+    ASSERT(0);
+  }
   
   AppState->MeterToPixels = 20.0;
   // NOTE(MIGUEL): Sim Initialization
@@ -51,10 +67,10 @@ static void SimInit(app_state *AppState)
   
   entity *Entity = nullptr;
   // TODO(MIGUEL): Convert from pixels to meters
-  f32 CommonWidth = 40.0f;
+  f32 CommonWidth = 2.0f;
   
-  f32 SpaceWidth  = 400.0f;
-  f32 SpaceHeight = 400.0f;
+  f32 SpaceWidth  = 20.0f;
+  f32 SpaceHeight = 20.0f;
   
   Entity = EntityWallLeft;
   Entity->Dim.x = CommonWidth;
@@ -102,35 +118,35 @@ static void SimInit(app_state *AppState)
   
   // NOTE(MIGUEL): Moving Entities
   u32 EntityIndex = 0;
-  f32 EntityDim = 20.0f;
+  f32 EntityDim = 1.0f;
   u32 EntitiesWanted = 10;
   u32 VectorTableSize = ARRAY_COUNT(NormalizedVectorTable);
   
   f32 TurnFraction= GOLDEN_RATIO32;
   u32 Resolution = 1;
   f32 NumPoints = 100;
-  f32 Radius = 400.0f-40.0f;
+  f32 Radius = 20.0f-2.1f;
   for(u32 Index=0; Index<NumPoints; Index++)
   {
     f32 Dist = Root((f32)Index/(NumPoints - 1.0f));
     f32 Theta = 2.0f*PI32*TurnFraction*(f32)Index;
     
-    v3f32 Point = v3f32Init(Dist*Cosine(Theta),
-                            Dist*Sine  (Theta), 0.0f); 
+    v3f Point = V3f(Dist*Cosine(Theta),
+                    Dist*Sine  (Theta), 0.0f); 
     
     
     //for(u32 EntityIndex = 0; EntityIndex < EntitiesWanted; EntityIndex++)
     f32 ClosetDistance = 0;
     if(AppState->EntityCount>0)
     {
-      v3f32 Delta = {0};
+      v3f Delta = {0};
       entity *TestEntity = AppState->Entities + (AppState->EntityCount-1);
       for(u32 TestEntityIndex=0;
           TestEntityIndex<AppState->EntityMaxCount;
           TestEntityIndex++, TestEntity++)
       {
         Delta = (Radius*Point)+ -1.0*TestEntity->Pos;
-        ClosetDistance = v3f32Magnitude(Delta);
+        ClosetDistance = V3fLength(Delta);
       }
     }
     
@@ -156,14 +172,14 @@ static void SimInit(app_state *AppState)
       
       Entity->Dim.x = EntityDim;
       Entity->Dim.y = EntityDim; 
-      Entity->Dim.z = 20.0f;
+      Entity->Dim.z = 1.0f;
       
       Entity->Acc.x = 0.0f;
       Entity->Acc.y = 0.0f;
       Entity->Acc.z = 0.0f;
       
       // NOTE(MIGUEL): Is normalize broken ?
-      Entity->Vel = v3f32Normalize(v3f32Init(DirX, DirY, 0.0f));
+      Entity->Vel = V3fNormalize(V3f(DirX, DirY, 0.0f));
       Entity->Vel.z = 0.0f;
       
       Entity->Type = Entity_Moves;
@@ -210,53 +226,53 @@ Intersects(f32 *NearestNormalizedCollisionPoint,
 }
 
 void
-DrawPath(render_buffer *RenderBuffer, v3f32 *PointList, u32 PointCount, v4f32 Color)
+DrawPath(render_buffer *RenderBuffer, v3f *PointList, u32 PointCount, v4f Color)
 {
   
   PushLine(RenderBuffer,
-           v3f32Init(0.0f, 0.0f, 0.0f),
-           v3f32Init(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
            PointList, PointCount, 2.0f, 0.9f, Color);
   
   return;
 }
 
 void
-DrawVector(render_buffer *RenderBuffer, v3f32 Origin, v3f32 Vec, memory_arena *LineArena)
+DrawVector(render_buffer *RenderBuffer, v3f Origin, v3f Vec, memory_arena *LineArena)
 {
-  v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, 2, v3f32);
+  v3f *PointList = ArenaPushArray(LineArena, 2, v3f);
   
-  v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
+  v4f Color  = V4f(1.0f, 1.0f, 1.0f, 1.0f);
   
-  PointList[0] = v3f32Init(Origin.x + 0.0f , Origin.y + 0.0f , 0.5);
-  PointList[1] = v3f32Init(Origin.x + Vec.x, Origin.y + Vec.y, 0.5);
+  PointList[0] = V3f(Origin.x + 0.0f , Origin.y + 0.0f , 0.5);
+  PointList[1] = V3f(Origin.x + Vec.x, Origin.y + Vec.y, 0.5);
   
   PushLine(RenderBuffer,
-           v3f32Init(0.0f, 0.0f, 0.0f),
-           v3f32Init(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
            PointList, 2, 4.0f, 0.6f, Color);
   
   return;
 }
 
 void
-DrawPerimeter(render_buffer *RenderBuffer, v3f32 Origin, rect_v2f32 Rect, memory_arena *LineArena)
+DrawPerimeter(render_buffer *RenderBuffer, v3f Origin, r2f Rect, memory_arena *LineArena)
 {
-  v4f32 Color  = v4f32Init(1.0f, 0.4f, 1.0f, 1.0f);
+  v4f Color  = V4f(1.0f, 0.4f, 1.0f, 1.0f);
   u32 PointCount = 6;
-  v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, PointCount, v3f32);
+  v3f *PointList = ArenaPushArray(LineArena, PointCount, v3f);
   
-  PointList[0] = v3f32Init(Origin.x + Rect.max.x, Origin.y + Rect.max.y, 0.5);
-  PointList[1] = v3f32Init(Origin.x + Rect.max.x, Origin.y + Rect.min.y, 0.5);
-  PointList[2] = v3f32Init(Origin.x + Rect.min.x, Origin.y + Rect.min.y, 0.5);
-  PointList[3] = v3f32Init(Origin.x + Rect.min.x, Origin.y + Rect.max.y, 0.5);
-  PointList[4] = v3f32Init(Origin.x + Rect.max.x, Origin.y + Rect.max.y, 0.5);
+  PointList[0] = V3f(Origin.x + Rect.max.x, Origin.y + Rect.max.y, 0.5);
+  PointList[1] = V3f(Origin.x + Rect.max.x, Origin.y + Rect.min.y, 0.5);
+  PointList[2] = V3f(Origin.x + Rect.min.x, Origin.y + Rect.min.y, 0.5);
+  PointList[3] = V3f(Origin.x + Rect.min.x, Origin.y + Rect.max.y, 0.5);
+  PointList[4] = V3f(Origin.x + Rect.max.x, Origin.y + Rect.max.y, 0.5);
   // NOTE(MIGUEL): This would be uneccesary if i implement round line caps
-  PointList[5] = v3f32Init(Origin.x + Rect.max.x, Origin.y + Rect.min.y, 0.5);
+  PointList[5] = V3f(Origin.x + Rect.max.x, Origin.y + Rect.min.y, 0.5);
   
   PushLine(RenderBuffer,
-           v3f32Init(0.0f, 0.0f, 0.0f),
-           v3f32Init(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
            PointList, PointCount, 3.0f, 0.2f, Color);
   return;
 }
@@ -264,27 +280,97 @@ DrawPerimeter(render_buffer *RenderBuffer, v3f32 Origin, rect_v2f32 Rect, memory
 void
 DrawAABB(render_buffer *RenderBuffer, entity *Entity, memory_arena *LineArena)
 {
-  v3f32 Origin = Entity->Pos;
-  v3f32 Offset = Entity->Dim / 2.0f;
+  v3f Origin = Entity->Pos;
+  v3f Offset = Entity->Dim / 2.0f;
   
-  v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
+  v4f Color  = V4f(1.0f, 1.0f, 1.0f, 1.0f);
   u32 PointCount = 6;
-  v3f32 *PointList = MEMORY_ARENA_PUSH_ARRAY(LineArena, PointCount, v3f32);
+  v3f *PointList = ArenaPushArray(LineArena, PointCount, v3f);
   
-  PointList[0] = v3f32Init(Origin.x + Offset.x, Origin.y + Offset.y, 0.5);
-  PointList[1] = v3f32Init(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
-  PointList[2] = v3f32Init(Origin.x - Offset.x, Origin.y - Offset.y, 0.5);
-  PointList[3] = v3f32Init(Origin.x - Offset.x, Origin.y + Offset.y, 0.5);
-  PointList[4] = v3f32Init(Origin.x + Offset.x, Origin.y + Offset.y, 0.5);
+  PointList[0] = V3f(Origin.x + Offset.x, Origin.y + Offset.y, 0.5);
+  PointList[1] = V3f(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
+  PointList[2] = V3f(Origin.x - Offset.x, Origin.y - Offset.y, 0.5);
+  PointList[3] = V3f(Origin.x - Offset.x, Origin.y + Offset.y, 0.5);
+  PointList[4] = V3f(Origin.x + Offset.x, Origin.y + Offset.y, 0.5);
   // NOTE(MIGUEL): This would be uneccesary if i implement round line caps
-  PointList[5] = v3f32Init(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
+  PointList[5] = V3f(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
   
   PushLine(RenderBuffer,
-           v3f32Init(0.0f, 0.0f, 0.0f),
-           v3f32Init(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
+           V3f(0.0f, 0.0f, 0.0f),
            PointList, PointCount, 10.0f, 0.8f, Color);
   return;
 }
+#if 0
+void
+DrawText(render_buffer *RenderBuffer, str8 Text, v3f Pos, memory_arena *Arena)
+{
+  u32 Line = 0;
+  f32 AdvX = Pos.x;
+  for (u32 Index = 0; Index < Text.Length; Index++)
+  {
+    u32 Char = Text.Data[Index];
+    switch((u8)Char)
+    {
+      case '\n': Line++;
+      AdvX = Pos.x;
+    } break;
+    default:
+    {
+      
+      f32 w = Glyph.Dim.x * Scale;
+      f32 h = Glyph.Dim.y * Scale;
+      u32 LineSpace = 20.0;
+      
+      // NOTE(MIGUEL): Origin
+      f32 OrgX = AdvX + Glyph.Bearing.x * Scale;
+      f32 OrgY = Pos.y - (LineSpace * Line) - GlyphOffsetY;
+#if 0
+      // TODO(MIGUEL): Use indeOrgXed Vertices instead. OnlOrgY After
+      //               implementing a simple IMUI and rendering 
+      //               api. Not a prioritOrgY.
+      teOrgXtured_verteOrgX QuadVerts[4] =
+      {
+        { OrgX + w, OrgY + h,   1.0f, 0.0f },
+        { OrgX + w, OrgY,       1.0f, 1.0f },
+        { OrgX,     OrgY,       0.0f, 1.0f },
+        { OrgX,     OrgY + h,   0.0f, 0.0f },            
+      };
+      u16 QuadIndices[6] = { 0, 1, 2, 0, 2, 3 };
+      //OPENGL_DBG(glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_ShORT, 0));
+#else
+      f32 vertices[6][4] =
+      {
+        { OrgX,     OrgY + h,   0.0f, 0.0f },
+        { OrgX,     OrgY,       0.0f, 1.0f },
+        { OrgX + w, OrgY,       1.0f, 1.0f },
+        
+        { OrgX,     OrgY + h,   0.0f, 0.0f },            
+        { OrgX + w, OrgY,       1.0f, 1.0f },
+        { OrgX + w, OrgY + h,   1.0f, 0.0f }           
+      };
+#endif
+      glBindTexture(GL_TEXTURE_2D, Glyph.TexID);
+      
+      glBindVertexArray(OpenGL->TexturedVertAttribID);
+      
+      //POSITION ATTRIB
+      OPENGL_DBG(glEnableVertexAttribArray(0));
+      OPENGL_DBG(glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 2 * sizeof(v2f), (GLvoid *)0));
+      
+      OPENGL_DBG(glBindBuffer(GL_ARRAY_BUFFER, OpenGL->TexturedVertBufferID));
+      OPENGL_DBG((glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices)));
+      
+      //OPENGL_DBG(glEnable(GL_SCISSOR_TEST));
+      //OPENGL_DBG(glScissor(ViewPos.x, ViewPos.y, ViewDim.x, ViewDim.y));
+      OPENGL_DBG(glDrawArrays (GL_TRIANGLES, 0, 6));
+      
+      AdvX += (Glyph.Advance >> 6) * Scale;
+    }
+  }
+  return;
+}
+#endif
 
 extern "C" SIM_UPDATE(Update)
 {
@@ -301,9 +387,9 @@ extern "C" SIM_UPDATE(Update)
   
   
   memory_arena TextArena = { 0 };
-  MemoryArenaInit(&TextArena, KILOBYTES(3), AppMemory->TransientStorage);
+  ArenaInit(&TextArena, KILOBYTES(3), AppMemory->TransientStorage);
   memory_arena LineArena = { 0 };
-  MemoryArenaInit(&LineArena, KILOBYTES(20), (u8 *)AppMemory->TransientStorage + TextArena.Size);
+  ArenaInit(&LineArena, KILOBYTES(20), (u8 *)AppMemory->TransientStorage + TextArena.Size);
   
   
   entity   *Entity   =  AppState->Entities;
@@ -311,19 +397,20 @@ extern "C" SIM_UPDATE(Update)
   {
     if(Entity->Type == Entity_Moves && Entity->Exists)
     {
-      f32   Speed = 0.03f;
-      v3f32 Drag  = {0.0f, 0.0f, 0.0f};
-      v3f32 Acc   = Entity->Acc * 1.0f;
-      v3f32 Vel   = Speed * (Entity->Vel + Drag);
+      // NOTE(MIGUEL): Speed is Meters/Second?
+      f32   Speed = 0.002f;
+      v3f Drag  = {0.08f, 0.0f, 0.0f};
+      v3f Acc   = Entity->Acc * 1.0f;
+      v3f Vel   = Speed * (Entity->Vel);
       
-      v3f32 PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
-                        Vel * AppState->DeltaTimeMS);
+      v3f PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
+                      Vel * AppState->DeltaTimeMS);
       
       Entity->Vel = Acc * AppState->DeltaTimeMS + Entity->Vel;
       
       u32 MaxCollisonIterations = 4;
       f32 NormalizedCollisionPoint = 1.0f;
-      f32 RemainingTravelDistance = v3f32Magnitude(PosDelta);
+      f32 RemainingTravelDistance = V3fLength(PosDelta);
       
       u32 Iteration = 0;
       for(; Iteration < MaxCollisonIterations; Iteration++)
@@ -338,12 +425,12 @@ extern "C" SIM_UPDATE(Update)
              TestEntity->Exists)
           {
             /// TEST ENTITY SPACE
-            v2f32 EntityPos = Entity->Pos.xy - TestEntity->Pos.xy;
+            v2f EntityPos = Entity->Pos.xy - TestEntity->Pos.xy;
             
-            rect_v2f32 TestEntityBounds = rect_v2f32CenteredDim(TestEntity->Dim.xy);
+            r2f TestEntityBounds = R2fCenteredDim(TestEntity->Dim.xy);
             
             
-            if(rect_v2f32IsInside(TestEntityBounds, EntityPos))
+            if(R2fIsInside(TestEntityBounds, EntityPos))
             {
               Entity->Exists = false;
               goto ProcessNextEntity;
@@ -351,20 +438,21 @@ extern "C" SIM_UPDATE(Update)
             
             ASSERT(Entity->Exists == true);
             
-            rect_v2f32 MinkowskiTestEntityBounds = { 0 };
-            MinkowskiTestEntityBounds = rect_v2f32AddRadiusTo(TestEntityBounds,
-                                                              Entity->Dim.xy);
+            r2f MinkowskiTestEntityBounds = { 0 };
+            MinkowskiTestEntityBounds = R2fAddRadiusTo(TestEntityBounds,
+                                                       Entity->Dim.xy);
             
             if(Iteration==0)
             {
-              v3f32 EToTEDelta = v3f32Init(EntityPos.x, EntityPos.y, 0.5);
-              DrawVector(RenderBuffer,Entity->Pos + 300.0f, -1.0f * EToTEDelta, &LineArena);
-              rect_v2f32 MTB = {0};
-              MTB.min = MinkowskiTestEntityBounds.min + 300.0f;
-              MTB.max = MinkowskiTestEntityBounds.max + 300.0f;
+              f32 WeirdOffset = 00.0f;
+              v3f EToTEDelta = V3f(EntityPos.x, EntityPos.y, 0.5);
+              DrawVector(RenderBuffer,Entity->Pos + WeirdOffset, -1.0f * EToTEDelta, &LineArena);
+              r2f MTB = {0};
+              MTB.min = MinkowskiTestEntityBounds.min + WeirdOffset;
+              MTB.max = MinkowskiTestEntityBounds.max + WeirdOffset;
               //pDrawPerimeter(RenderBuffer, TestEntity->Pos, MTB, &LineArena);
             }
-            v3f32 WallNormal = { 0 };
+            v3f WallNormal = { 0 };
             
             entity *HitEntity  = nullptr;
             // NOTE(MIGUEL): Intersection Test on all the walls of Test entity
@@ -376,7 +464,7 @@ extern "C" SIM_UPDATE(Update)
                           MinkowskiTestEntityBounds.min.y,
                           MinkowskiTestEntityBounds.max.y))
             {
-              WallNormal = v3f32Init(-1.0f, 0.0f, 0.0f);
+              WallNormal = V3f(-1.0f, 0.0f, 0.0f);
               HitEntity = TestEntity;
             }
             // RIGHT WALL
@@ -387,7 +475,7 @@ extern "C" SIM_UPDATE(Update)
                           MinkowskiTestEntityBounds.min.y,
                           MinkowskiTestEntityBounds.max.y))
             {
-              WallNormal = v3f32Init(1.0f, 0.0f, 0.0f);
+              WallNormal = V3f(1.0f, 0.0f, 0.0f);
               HitEntity = TestEntity;
             }
             // TOP WALL
@@ -398,7 +486,7 @@ extern "C" SIM_UPDATE(Update)
                           MinkowskiTestEntityBounds.min.x,
                           MinkowskiTestEntityBounds.max.x))
             {
-              WallNormal = v3f32Init(0.0f, 1.0f, 0.0f);
+              WallNormal = V3f(0.0f, 1.0f, 0.0f);
               HitEntity = TestEntity;
             }
             // BOTTOM WALL
@@ -409,7 +497,7 @@ extern "C" SIM_UPDATE(Update)
                           MinkowskiTestEntityBounds.min.x,
                           MinkowskiTestEntityBounds.max.x))
             {
-              WallNormal = v3f32Init(0.0f, -1.0f, 0.0f);
+              WallNormal = V3f(0.0f, -1.0f, 0.0f);
               HitEntity = TestEntity;
             }
             
@@ -417,14 +505,14 @@ extern "C" SIM_UPDATE(Update)
             // NOTE(MIGUEL): Computes New Pos Delta On Collision
             if(HitEntity)
             {
-              v3f32 NewVel = WallNormal;
-              f32   VelDot = v3f32Inner(Entity->Vel, WallNormal);
+              v3f NewVel = WallNormal;
+              f32   VelDot = V3fInner(Entity->Vel, WallNormal);
               Entity->Vel -= NewVel * VelDot;
               Entity->Vel -= NewVel * VelDot;
               
               
-              v3f32 NewPosDelta = WallNormal;
-              f32   PosDeltaDot = v2f32Inner(PosDelta.xy, WallNormal.xy);
+              v3f NewPosDelta = WallNormal;
+              f32   PosDeltaDot = V2fInner(PosDelta.xy, WallNormal.xy);
               PosDelta -= NewVel * PosDeltaDot;
               PosDelta -= NewVel * PosDeltaDot;
               
@@ -444,17 +532,17 @@ extern "C" SIM_UPDATE(Update)
         
 #endif
         
-        v3f32 OldPos = Entity->Pos;
-        Entity->Pos.x += 300;
-        Entity->Pos.y += 300;
-        
+        v3f OldPos = Entity->Pos;
+        //Entity->Pos.x += 300;
+        //Entity->Pos.y += 300;
+        //300
         Entity->Pos.x = OldPos.x;
         Entity->Pos.y = OldPos.y;
         
       }
 #if 0
       
-      v3f32 *CollisionPoints = MEMORY_ARENA_PUSH_ARRAY(&LineArena, MaxCollisonIterations, v3f32);
+      v3f32 *CollisionPoints = ArenaPushArray(&LineArena, MaxCollisonIterations, v3f32);
       // NOTE(MIGUEL): 
       CollisionPoints[Iteration] = v3f32Init(Entity->Pos.x, Entity->Pos.y, 0.5);
       DrawVector(RenderBuffer, Vel, Entity->Pos, &LineArena);
@@ -475,9 +563,7 @@ extern "C" SIM_UPDATE(Update)
     if(Entity->Exists)
     {
       // TODO(MIGUEL): 
-      v3f32 OldPos = Entity->Pos;
-      Entity->Pos.x += 300;
-      Entity->Pos.y += 300;
+      v3f OldPos = Entity->Pos;
       
       DrawAABB(RenderBuffer, Entity, &LineArena);
       PushRect(RenderBuffer, Entity->Pos, Entity->Dim, Entity->Vel);

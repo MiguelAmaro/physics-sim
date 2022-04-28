@@ -13,7 +13,13 @@ of linear algebra and physics.
 
 ## DEV 
 **OBJECTIVES**
-- [ ] QuaTree Implementation.
+- [ ] Implement Easy lines
+- [ ] Implement Text Rendering
+- [ ] Introspection
+- [ ] IM GUI
+- [ ] Implement Pixel to Unit Conversion
+- [ ] QuadTree Implementation(Blah implementation).
+- [ ] QuadTree Hilbert sequentialization.
 - [ ] Implement a camera system.
 - [ ] Font rendering.
 - [ ] Get app timing correct
