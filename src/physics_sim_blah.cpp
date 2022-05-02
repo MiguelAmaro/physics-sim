@@ -6,6 +6,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+global b32 Reloaded = 1;
 global FT_Library FreeType;
 global FT_Face    Face;
 
@@ -37,17 +38,6 @@ void QtreeQueryRange()
 
 static void SimInit(app_state *AppState)
 {
-  if (FT_Init_FreeType(&FreeType))
-  {
-    OutputDebugString("FreeType Error: Could not init FreeType Library");
-    Assert(0);
-  }
-  if (FT_New_Face(FreeType, "..\\res\\cour.ttf", 0, &Face))
-  {
-    OutputDebugString("FreeType Error: Could not load Font");
-    Assert(0);
-  }
-  
   AppState->MeterToPixels = 20.0f;
   // NOTE(MIGUEL): Sim Initialization
   AppState->EntityCount    =   0;
@@ -323,8 +313,8 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
       continue;
     }
     // NOTE(MIGUEL): Metrics in 26.6 Pixel Format  AdvanceX in 1/2048th vector units
-    //f32 UnitConversion = 1.0f/64.0f;
-    f32 UnitConversion = 1.0f/2048*100.0f;
+    f32 UnitConversion = 1.0f/64.0f;
+    //f32 UnitConversion = 1.0f/2048*100.0f; // NOTE(MIGUEL): Yields incorect pixel size
     v2f  GlyphDim = V2f((f32)GlyphMetrics->width*UnitConversion,
                         (f32)GlyphMetrics->height*UnitConversion);
     
@@ -451,6 +441,23 @@ extern "C" SIM_UPDATE(Update)
 {
   app_state *AppState = (app_state *)AppMemory->PermanentStorage;
   
+  if(Reloaded)
+  {
+    if (FT_Init_FreeType(&FreeType))
+    {
+      OutputDebugString("FreeType Error: Could not init FreeType Library");
+      Assert(0);
+    }
+    if (FT_New_Face(FreeType, "..\\res\\cour.ttf", 0, &Face))
+    {
+      OutputDebugString("FreeType Error: Could not load Font");
+      Assert(0);
+    }
+    
+    Reloaded = 0;
+  }
+  
+  
   if(AppState->IsInitialized == false)
   {
     SimInit(AppState);
@@ -477,7 +484,9 @@ extern "C" SIM_UPDATE(Update)
   
   //RenderCmdPushRect(RenderBuffer, V3f(0.0, 0.0, 0.0f), V3f(4000.0f, 4000.0f, 1.0f), V3f(1.0f, 1.0f, 0.0f));
   str8 MsPerFrameLabel = Str8FormatFromArena(&TextArena, "MSPerFrame: %.2f \n", AppState->DeltaTimeMS);
-  DrawSomeText(RenderBuffer, MsPerFrameLabel, 60, V3f(40.0f, 600.0f, 0.0f));
+  str8 LongestFrameLabel = Str8FormatFromArena(&TextArena, "longestFrame: %.2f \n", AppState->LongestFrameTime);
+  DrawSomeText(RenderBuffer, MsPerFrameLabel, 40, V3f(40.0f, 600.0f, 0.0f));
+  DrawSomeText(RenderBuffer, LongestFrameLabel, 40, V3f(40.0f, 552.0f, 0.0f));
   entity   *Entity   =  AppState->Entities;
   for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
   {

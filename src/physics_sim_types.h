@@ -34,6 +34,6 @@ typedef  uint32_t b32;
 typedef  uint64_t b64;
 
 typedef float f32;
-typedef float f64;
+typedef double f64;
 
 #endif //PHYSICS_SIM_TYPES_H

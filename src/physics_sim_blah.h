@@ -38,8 +38,9 @@ struct entity
 struct app_state
 {
   b32 IsInitialized;
-  f32 DeltaTimeMS;
-  f32 Time;
+  f64 DeltaTimeMS;
+  f64 LongestFrameTime;
+  f64 Time;
   
   memory_arena AssetArena;
   

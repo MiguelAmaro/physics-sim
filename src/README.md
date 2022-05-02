@@ -50,6 +50,7 @@ updated it could be a huge time sink. Fixed the problem where entities jump over
 hold window resize for to long. Dont keep functions that hand os events like window resize in timed sections
 of code. 
 
+
 **NOTE(MIGUEL): (04/29/2022)**
 
 Work on text rendering!!! Buffers are mememory resources that are mean to be used in a a flexible generic way
@@ -58,6 +59,7 @@ pixel element and they may also have more hardware functionality assoceiated. Im
 an array of 2d texture subresource where each slice is glyp bitmap. Textures are being dispatched to the gpu correctly but 
 they are not being rendered on to the screen.
 
+
 **NOTE(MIGUEL): (05/01/2022)**
 
 Tried to get d3d11 to render text glyph texutures onto my sprite but now quads wont render at all.
@@ -65,8 +67,14 @@ Goal is to debug that before moving forward with text glyph stuff. Lookes at ren
 render and nothing stook out. Coords seem reasonable but mesh overlay doesnt show up on texture viewer. 
 Ill comment out text render calls and first mega quad used of backdrop to try to isolate the problem.
 
+
 **NOTE(MIGUEL): (05/02/2022)**
+
 I'm currently including and compiling freetype on the dll which can get reloaded. The app crashes on dll reload
 when calling freetype functions. I'll move this to the exe side but it would be nice to understand better the reason
 behind the crash... Just for basics i want to load the ascii range of characters maybe using a temp arena and do the 
-mapping into d3d11 2d textures.
+mapping into d3d11 2d textures. As long as i initialize free type once when reloading a the dll everything is fine.
+I dont want glyhs to be loaded every frame.
+I want the Ansi range of charters for now.
+I want full control over font loading from the dll.
+I don't duplicate bitmaps for chars.

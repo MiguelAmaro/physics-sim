@@ -1928,6 +1928,7 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
 
 void PhysicsSim(HWND Window, app_memory *AppMemory)
 {
+  renderer *Renderer = &g_Renderer;
   
   memory_arena AssetLoadingArena;
   
@@ -1936,26 +1937,27 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
             AppMemory->TransientStorage);
   
   // NOTE(MIGUEL): Should this load glyphs ???
-  D3D11LoadResources(&g_Renderer, &AssetLoadingArena);
+  D3D11LoadResources(Renderer, &AssetLoadingArena);
   
+  //PlatformLoadTextGlyphs(Renderer, "font" , &AssetLoadingArena);
   ArenaDiscard(&AssetLoadingArena);
   
-  g_Renderer.SmileyTex = LoadBitmap("..\\res\\frown.bmp");
-  g_Renderer.TextTex   = LoadBitmap("..\\res\\text.bmp");
+  Renderer->SmileyTex = LoadBitmap("..\\res\\frown.bmp");
+  Renderer->TextTex   = LoadBitmap("..\\res\\text.bmp");
   
   // NOTE(MIGUEL): First
-  D3D11InitTextureMapping(&g_Renderer,
-                          &g_Renderer.SmileyTexResource,
+  D3D11InitTextureMapping(Renderer,
+                          &Renderer->SmileyTexResource,
                           DXGI_FORMAT_B8G8R8A8_UNORM,
-                          &g_Renderer.SmileyTexView,
-                          &g_Renderer.SmileySamplerState, 1,
-                          &g_Renderer.SmileyTex);
-  D3D11InitTextureMapping(&g_Renderer,
-                          &g_Renderer.TextTexResource,
+                          &Renderer->SmileyTexView,
+                          &Renderer->SmileySamplerState, 1,
+                          &Renderer->SmileyTex);
+  D3D11InitTextureMapping(Renderer,
+                          &Renderer->TextTexResource,
                           DXGI_FORMAT_R8_UNORM,
-                          &g_Renderer.TextTexView,
-                          &g_Renderer.TextSamplerState, 1,
-                          &g_Renderer.TextTex);
+                          &Renderer->TextTexView,
+                          &Renderer->TextSamplerState, 1,
+                          &Renderer->TextTex);
   
   // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
   //               system. (World moving around you when walking to simulate you looking around)
@@ -1981,16 +1983,21 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   
   app_input Input;
   
-  
+  /*
   LARGE_INTEGER TickFrequency;
   LARGE_INTEGER WorkStartTick;
   LARGE_INTEGER WorkEndTick;
   LARGE_INTEGER WorkTickDelta;
   LARGE_INTEGER MicrosElapsedWorking;
-  //f32 TargetFPS = 60.0f;
-  u64 TargetMicrosPerFrame = 16666;
-  
-  QueryPerformanceFrequency(&TickFrequency);
+  */
+  u64 TickFrequency = 0;
+  u64 WorkStartTick = 0;
+  u64 WorkEndTick = 0;
+  u64 WorkTickDelta = 0;
+  f64 MicrosElapsedWorking = 0.;
+  QueryPerformanceFrequency((LARGE_INTEGER *)&TickFrequency);
+  f64 TargetMicrosPerFrame = 16666.0; 
+  f64 TicksToMicros = 1000000.0/(f64)TickFrequency;
   
   win32_sim_code SimCode = { 0 };
   
@@ -2002,7 +2009,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
     // NOTE(MIGUEL): Start Timer
     
     ProcessPendingMessages(&Input);
-    QueryPerformanceCounter  (&WorkStartTick);
+    QueryPerformanceCounter((LARGE_INTEGER *)&WorkStartTick);
     
     RECT WindowDim;
     GetClientRect(Window, &WindowDim);
@@ -2051,46 +2058,39 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
       {
         SimCode.Update(AppMemory, &g_Renderer.RenderBuffer);
       }
-      
-      
-      
       Render(&g_Renderer, AppMemory);
     }
-    gFrameStep = gFrameStep == true?false:false;
     
-    QueryPerformanceCounter  (&WorkEndTick);
-    WorkTickDelta.QuadPart     = WorkEndTick.QuadPart - WorkStartTick.QuadPart;
-    WorkTickDelta.QuadPart     = WorkTickDelta.QuadPart * 1000000;
-    MicrosElapsedWorking.QuadPart = WorkTickDelta.QuadPart / TickFrequency.QuadPart;
+    gFrameStep = gFrameStep == 1?0:1;
     
-    // NOTE(MIGUEL): Wait
-    LARGE_INTEGER WaitTickDelta;
-    LARGE_INTEGER WaitStartTick;
-    LARGE_INTEGER WaitEndTick   = WorkEndTick;
-    LARGE_INTEGER MicrosElapsedWaiting = { 0 };
+    QueryPerformanceCounter((LARGE_INTEGER *)&WorkEndTick);
+    WorkTickDelta        = WorkEndTick - WorkStartTick;
+    MicrosElapsedWorking = (f64)WorkTickDelta*TicksToMicros;
     
-    while((MicrosElapsedWorking.QuadPart +
-           MicrosElapsedWaiting.QuadPart )
-          < TargetMicrosPerFrame)
+    // NOTE(MIGUEL): Idle
+    u64 IdleTickDelta = 0;
+    u64 IdleStartTick = WorkEndTick;
+    u64 IdleEndTick = 0;
+    f64 MicrosElapsedIdle = 0.0;
+    
+    while((MicrosElapsedWorking+MicrosElapsedIdle)<TargetMicrosPerFrame)
     {
-      QueryPerformanceCounter  (&WaitStartTick);
-      
-      u64 TimeToSleep = (TargetMicrosPerFrame -
-                         MicrosElapsedWorking.QuadPart +
-                         MicrosElapsedWaiting.QuadPart) / 1000;
-      
-      Sleep(TimeToSleep);
-      
-      QueryPerformanceCounter  (&WaitEndTick);
-      WaitTickDelta.QuadPart         = WaitEndTick.QuadPart - WaitStartTick.QuadPart;
-      WaitTickDelta.QuadPart         = WaitTickDelta.QuadPart * 1000000;
-      MicrosElapsedWaiting.QuadPart += (WaitTickDelta.QuadPart / TickFrequency.QuadPart);
+      QueryPerformanceCounter((LARGE_INTEGER *)&IdleEndTick);
+      IdleTickDelta = IdleEndTick-IdleStartTick;
+      MicrosElapsedIdle = (f64)IdleTickDelta*TicksToMicros;
     }
     
     // NOTE(MIGUEL): Fuck this is sloppy
     app_state *AppState = (app_state *)AppMemory->PermanentStorage;
-    AppState->DeltaTimeMS  = (f32)((MicrosElapsedWorking.QuadPart + MicrosElapsedWaiting.QuadPart) / 1000);
+    f64 FrameTimeMS = (MicrosElapsedWorking+MicrosElapsedIdle)/1000.0;
+    if(FrameTimeMS>AppState->LongestFrameTime)
+    {
+      AppState->LongestFrameTime = FrameTimeMS;
+    }
+    AppState->DeltaTimeMS  = TargetMicrosPerFrame/ 1000;
+    AppState->DeltaTimeMS  = FrameTimeMS;
     AppState->Time        += AppState->DeltaTimeMS;
+    
     
   }
   
