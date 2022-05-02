@@ -64,3 +64,9 @@ Tried to get d3d11 to render text glyph texutures onto my sprite but now quads w
 Goal is to debug that before moving forward with text glyph stuff. Lookes at renderdoc on why quads wont
 render and nothing stook out. Coords seem reasonable but mesh overlay doesnt show up on texture viewer. 
 Ill comment out text render calls and first mega quad used of backdrop to try to isolate the problem.
+
+**NOTE(MIGUEL): (05/02/2022)**
+I'm currently including and compiling freetype on the dll which can get reloaded. The app crashes on dll reload
+when calling freetype functions. I'll move this to the exe side but it would be nice to understand better the reason
+behind the crash... Just for basics i want to load the ascii range of characters maybe using a temp arena and do the 
+mapping into d3d11 2d textures.
