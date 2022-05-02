@@ -4,25 +4,16 @@ if not exist build mkdir build
 set OUTPUT=%1
 
 rem PROJECT INFO / SOURCE FILES
-rem ************************************************************
+rem ============================================================
 set PROJECT_DIR=%cd%
 set PROJECT_NAME=physics_sim
 set SOURCES=^
 %PROJECT_DIR%\src\%PROJECT_NAME%.cpp 
 
-rem BUILD TOOLS
-rem ************************************************************
-set D3D_DIR=F:\Dev_Tools\DirectXSDKLegacy
-
-
 rem COMPILER(MSVC) OPTIONS
-rem ************************************************************
-set MSVC_WARNINGS= -wd4700
-
-set MSVC_FLAGS= ^
-%MSVC_WARNINGS% ^
--nologo ^
--Wall ^
+rem ============================================================
+set MSVC_WARNINGS=^
+-wd4700 ^
 -wd4820 ^
 -wd4668 ^
 -wd4577 ^
@@ -33,19 +24,24 @@ set MSVC_FLAGS= ^
 -wd4201 ^
 -wd4100 ^
 -wd4191 ^
--wd4061 ^
+-wd4061
+
+set MSVC_FLAGS= ^
+%MSVC_WARNINGS% ^
+-nologo ^
+-Wall ^
 -Zi ^
--DRENDERER_OPENGL ^
+-Od ^
 -Gm- ^
 -GR- ^
 -EHa- ^
--Od ^
 -GS- ^
 -Gs9999999
 
 set MSVC_SEARCH_DIRS=^
 -I%PROJECT_DIR%\ ^
--I%PROJECT_DIR%\thirdparty\freetype2\include
+-I%PROJECT_DIR%\thirdparty\freetype2\include ^
+-I%PROJECT_DIR%\thirdparty\
 
 rem ************************************************************
 rem LINKER(MSVC) OPTIONS
@@ -62,12 +58,6 @@ dinput8.lib ^
 dxguid.lib ^
 winmm.lib ^
 ws2_32.lib
-
-
-rem %D3D_DIR%\Lib\x64\d3d11.lib ^
-rem %D3D_DIR%\Lib\x64\dxerr.lib ^
-rem %D3D_DIR%\Lib\x64\ ^
-rem %D3D_DIR%\Lib\x64\d3dx11.lib <- Utility Library is deprecated.
 
 set MSVC_LINK_FLAGS= ^
 -nodefaultlib ^
@@ -116,7 +106,7 @@ rem echo WAITING FOR PDB > lock.tmp
 cl ^
 %MSVC_FLAGS% ^
 %MSVC_SEARCH_DIRS% ^
-F:\Dev\PhysicsSim\src\%PROJECT_NAME%_blah.cpp ^
+%PROJECT_DIR%\src\%PROJECT_NAME%_blah.cpp ^
 -Fm%PROJECT_NAME%_blah.map ^
 -DLL ^
 -LD ^

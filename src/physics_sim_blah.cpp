@@ -40,15 +40,15 @@ static void SimInit(app_state *AppState)
   if (FT_Init_FreeType(&FreeType))
   {
     OutputDebugString("FreeType Error: Could not init FreeType Library");
-    ASSERT(0);
+    Assert(0);
   }
   if (FT_New_Face(FreeType, "..\\res\\cour.ttf", 0, &Face))
   {
     OutputDebugString("FreeType Error: Could not load Font");
-    ASSERT(0);
+    Assert(0);
   }
   
-  AppState->MeterToPixels = 20.0;
+  AppState->MeterToPixels = 20.0f;
   // NOTE(MIGUEL): Sim Initialization
   AppState->EntityCount    =   0;
   AppState->EntityMaxCount = 256;
@@ -82,6 +82,7 @@ static void SimInit(app_state *AppState)
   Entity->Pos.z = 0.0f;
   Entity->Type = Entity_Wall;
   Entity->Exists = true;
+  
   Entity = EntityWallRight;
   Entity->Dim.x = CommonWidth;
   Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
@@ -173,7 +174,8 @@ static void SimInit(app_state *AppState)
       Entity->Dim.x = EntityDim;
       Entity->Dim.y = EntityDim; 
       Entity->Dim.z = 1.0f;
-      
+      Assert(Entity->Dim.x == 1.0f &&
+             Entity->Dim.y == 1.0f);
       Entity->Acc.x = 0.0f;
       Entity->Acc.y = 0.0f;
       Entity->Acc.z = 0.0f;
@@ -188,7 +190,7 @@ static void SimInit(app_state *AppState)
       EntityIndex++;
     }
   };
-  
+  Entity   =  AppState->Entities;
   return;
 }
 
@@ -229,10 +231,10 @@ void
 DrawPath(render_buffer *RenderBuffer, v3f *PointList, u32 PointCount, v4f Color)
 {
   
-  PushLine(RenderBuffer,
-           V3f(0.0f, 0.0f, 0.0f),
-           V3f(0.0f, 0.0f, 0.0f),
-           PointList, PointCount, 2.0f, 0.9f, Color);
+  RenderCmdPushLine(RenderBuffer,
+                    V3f(0.0f, 0.0f, 0.0f),
+                    V3f(0.0f, 0.0f, 0.0f),
+                    PointList, PointCount, 2.0f, 0.9f, Color);
   
   return;
 }
@@ -247,10 +249,10 @@ DrawVector(render_buffer *RenderBuffer, v3f Origin, v3f Vec, memory_arena *LineA
   PointList[0] = V3f(Origin.x + 0.0f , Origin.y + 0.0f , 0.5);
   PointList[1] = V3f(Origin.x + Vec.x, Origin.y + Vec.y, 0.5);
   
-  PushLine(RenderBuffer,
-           V3f(0.0f, 0.0f, 0.0f),
-           V3f(0.0f, 0.0f, 0.0f),
-           PointList, 2, 4.0f, 0.6f, Color);
+  RenderCmdPushLine(RenderBuffer,
+                    V3f(0.0f, 0.0f, 0.0f),
+                    V3f(0.0f, 0.0f, 0.0f),
+                    PointList, 2, 4.0f, 0.6f, Color);
   
   return;
 }
@@ -270,10 +272,10 @@ DrawPerimeter(render_buffer *RenderBuffer, v3f Origin, r2f Rect, memory_arena *L
   // NOTE(MIGUEL): This would be uneccesary if i implement round line caps
   PointList[5] = V3f(Origin.x + Rect.max.x, Origin.y + Rect.min.y, 0.5);
   
-  PushLine(RenderBuffer,
-           V3f(0.0f, 0.0f, 0.0f),
-           V3f(0.0f, 0.0f, 0.0f),
-           PointList, PointCount, 3.0f, 0.2f, Color);
+  RenderCmdPushLine(RenderBuffer,
+                    V3f(0.0f, 0.0f, 0.0f),
+                    V3f(0.0f, 0.0f, 0.0f),
+                    PointList, PointCount, 3.0f, 0.2f, Color);
   return;
 }
 
@@ -295,77 +297,150 @@ DrawAABB(render_buffer *RenderBuffer, entity *Entity, memory_arena *LineArena)
   // NOTE(MIGUEL): This would be uneccesary if i implement round line caps
   PointList[5] = V3f(Origin.x + Offset.x, Origin.y - Offset.y, 0.5);
   
-  PushLine(RenderBuffer,
-           V3f(0.0f, 0.0f, 0.0f),
-           V3f(0.0f, 0.0f, 0.0f),
-           PointList, PointCount, 10.0f, 0.8f, Color);
+  RenderCmdPushLine(RenderBuffer,
+                    V3f(0.0f, 0.0f, 0.0f),
+                    V3f(0.0f, 0.0f, 0.0f),
+                    PointList, PointCount, 10.0f, 0.8f, Color);
   return;
 }
-#if 0
+
+#if 1
 void
-DrawText(render_buffer *RenderBuffer, str8 Text, v3f Pos, memory_arena *Arena)
+DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos)
 {
+  FT_Set_Pixel_Sizes(Face, 0, HeightInPixels);
+  FT_Glyph_Metrics *GlyphMetrics = &Face->glyph->metrics;
+  FT_Bitmap        *GlyphBitmap  = &Face->glyph->bitmap;
+  
   u32 Line = 0;
   f32 AdvX = Pos.x;
   for (u32 Index = 0; Index < Text.Length; Index++)
   {
-    u32 Char = Text.Data[Index];
-    switch((u8)Char)
+    u32 CharCode = (u32)Text.Data[Index];
+    if (FT_Load_Char(Face, CharCode, FT_LOAD_RENDER))
     {
-      case '\n': Line++;
-      AdvX = Pos.x;
-    } break;
-    default:
+      Assert("FreeType Error: Could not load Glyph");
+      continue;
+    }
+    // NOTE(MIGUEL): Metrics in 26.6 Pixel Format  AdvanceX in 1/2048th vector units
+    //f32 UnitConversion = 1.0f/64.0f;
+    f32 UnitConversion = 1.0f/2048*100.0f;
+    v2f  GlyphDim = V2f((f32)GlyphMetrics->width*UnitConversion,
+                        (f32)GlyphMetrics->height*UnitConversion);
+    
+    v2f  GlyphBearing = V2f((f32)GlyphMetrics->horiBearingX*UnitConversion,
+                            (f32)GlyphMetrics->horiBearingY* UnitConversion);
+    f32  GlyphAdvance = (f32)GlyphMetrics->horiAdvance*UnitConversion;
+    u8  *GlyphBitmapData = GlyphBitmap->buffer;
+    u32  GlyphBitmapSize = (u32)(GlyphDim.x * GlyphDim.y);
+    
+    u8 Message[4096] = {0};
+    stbsp_snprintf((char *)Message, 4096,
+                   "Glyph Metrics | "
+                   "H: %d  W: %d  | "
+                   "HoriAdv: %d   | "
+                   "BearingX: %d  | "
+                   "Bearing Y: %d | "
+                   "                "
+                   "Glyph Metrics OG| "
+                   "H: %d  W: %d  | "
+                   "HoriAdv: %d   | "
+                   "BearingX: %d  | "
+                   "Bearing Y: %d | "
+                   "\n",
+                   (u32)GlyphDim.x, (u32)GlyphDim.y,
+                   (u32)GlyphAdvance,
+                   (u32)GlyphBearing.x, (u32)GlyphBearing.y,
+                   GlyphMetrics->width, GlyphMetrics->height,
+                   GlyphMetrics->horiAdvance,
+                   GlyphMetrics->horiBearingX, GlyphMetrics->horiBearingY);
+    OutputDebugString((char *)Message);
+    // TODO(MIGUEL): Get a bitmap from Free type every time
+    //easy and slow
+    // TODO(MIGUEL): Bitmap arena. push bitmaps in and save and foward index to renderer and bind a texture
+    //               for the index for each drqw call
+    //Harder and more efficeient
+    // TODO(MIGUEL): Figure out storage for the bitmap. atlas or whatver, max size, bitmap dim uniformity
+    // TODO(MIGUEL): Figure out access in from an at atlas bitmap. instanced quads
+    
+    switch((u8)CharCode)
     {
-      
-      f32 w = Glyph.Dim.x * Scale;
-      f32 h = Glyph.Dim.y * Scale;
-      u32 LineSpace = 20.0;
-      
-      // NOTE(MIGUEL): Origin
-      f32 OrgX = AdvX + Glyph.Bearing.x * Scale;
-      f32 OrgY = Pos.y - (LineSpace * Line) - GlyphOffsetY;
-#if 0
-      // TODO(MIGUEL): Use indeOrgXed Vertices instead. OnlOrgY After
-      //               implementing a simple IMUI and rendering 
-      //               api. Not a prioritOrgY.
-      teOrgXtured_verteOrgX QuadVerts[4] =
+      case '\r':
+      case '\n': 
       {
-        { OrgX + w, OrgY + h,   1.0f, 0.0f },
-        { OrgX + w, OrgY,       1.0f, 1.0f },
-        { OrgX,     OrgY,       0.0f, 1.0f },
-        { OrgX,     OrgY + h,   0.0f, 0.0f },            
-      };
-      u16 QuadIndices[6] = { 0, 1, 2, 0, 2, 3 };
-      //OPENGL_DBG(glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_ShORT, 0));
-#else
-      f32 vertices[6][4] =
+        Line++;
+        AdvX = Pos.x;
+      } break;
+      case ' ': 
       {
-        { OrgX,     OrgY + h,   0.0f, 0.0f },
-        { OrgX,     OrgY,       0.0f, 1.0f },
-        { OrgX + w, OrgY,       1.0f, 1.0f },
+        //Line++;
+        //AdvX += ((u32)GlyphAdvance >> 6) * Scale;
+      } break;
+      default:
+      {
+        f32 GlyphOffsetY = (GlyphDim.y - GlyphBearing.y);
+        f32 Width = GlyphDim.x;
+        f32 Height = GlyphDim.y;
+        u32 LineSpace = 0.0f;
         
-        { OrgX,     OrgY + h,   0.0f, 0.0f },            
-        { OrgX + w, OrgY,       1.0f, 1.0f },
-        { OrgX + w, OrgY + h,   1.0f, 0.0f }           
-      };
+        // NOTE(MIGUEL): Origin
+        f32 OrgX = AdvX + GlyphBearing.x;
+        f32 OrgY = Pos.y - GlyphOffsetY - (LineSpace * Line);
+#if 0
+        // TODO(MIGUEL): Use indeOrgXed Vertices instead. OnlOrgY After
+        //               implementing a simple IMUI and rendering 
+        //               api. Not a prioritOrgY.
+        teOrgXtured_verteOrgX QuadVerts[4] =
+        {
+          { OrgX + Width, OrgY + Height,   1.0f, 0.0f },
+          { OrgX + Width, OrgY,            1.0f, 1.0f },
+          { OrgX,         OrgY,            0.0f, 1.0f },
+          { OrgX,         OrgY + Height,   0.0f, 0.0f },            
+        };
+        u16 QuadIndices[6] = { 0, 1, 2, 0, 2, 3 };
+        //OPENGL_DBG(glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_ShORT, 0));
+#else
+        f32 vertices[6][4] =
+        {
+          { OrgX,         OrgY + Height,   0.0f, 0.0f },
+          { OrgX,         OrgY,            0.0f, 1.0f },
+          { OrgX + Width, OrgY,            1.0f, 1.0f },
+          
+          { OrgX,         OrgY + Height,   0.0f, 0.0f },            
+          { OrgX + Width, OrgY,            1.0f, 1.0f },
+          { OrgX + Width, OrgY + Height,   1.0f, 0.0f }           
+        };
 #endif
-      glBindTexture(GL_TEXTURE_2D, Glyph.TexID);
-      
-      glBindVertexArray(OpenGL->TexturedVertAttribID);
-      
-      //POSITION ATTRIB
-      OPENGL_DBG(glEnableVertexAttribArray(0));
-      OPENGL_DBG(glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 2 * sizeof(v2f), (GLvoid *)0));
-      
-      OPENGL_DBG(glBindBuffer(GL_ARRAY_BUFFER, OpenGL->TexturedVertBufferID));
-      OPENGL_DBG((glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices)));
-      
-      //OPENGL_DBG(glEnable(GL_SCISSOR_TEST));
-      //OPENGL_DBG(glScissor(ViewPos.x, ViewPos.y, ViewDim.x, ViewDim.y));
-      OPENGL_DBG(glDrawArrays (GL_TRIANGLES, 0, 6));
-      
-      AdvX += (Glyph.Advance >> 6) * Scale;
+        v3f GlyphQuadPos = V3f(OrgX+Width*0.0f, OrgY+Width*0.1f, 0.5f);
+        v3f GlyphQuadDim = V3f(GlyphDim.x*10.0f, GlyphDim.y*10.0f, 0.0f);
+        v3f CosSin = V3f(0.1, 0.0f, 0.0f);
+        b32 IsText = 1;
+        
+        bitmapdata BitmapData = {0};
+        BitmapData.Width = (u32)GlyphDim.x;
+        BitmapData.Height = (u32)GlyphDim.y;
+        BitmapData.Pixels = (u8 *)ArenaPushArray(RenderBuffer->PixelArena, GlyphBitmapSize, u8);
+        BitmapData.BytesPerPixel = sizeof(u8);
+        MemoryCopy(GlyphBitmapData, GlyphBitmapSize, BitmapData.Pixels, GlyphBitmapSize);
+        if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
+        {
+          render_entry *Entry = RenderBuffer->Entries + RenderBuffer->EntryCount++;
+          MemorySet(0, Entry, sizeof(render_entry));
+          render_entry  RenderEntry;
+          RenderEntry.Type  = RenderType_quad;
+          RenderEntry.Pos   = GlyphQuadPos;
+          RenderEntry.Dim   = GlyphQuadDim;
+          u8 *RenderData = RenderEntry.Data;
+          size_t RenderDataSize = RENDER_ENTRY_DATASEG_SIZE;
+          // NOTE(MIGUEL): !!!CRITICAL!!!!This is very sensitive code. The order in which you 
+          //               pop elements matters. Changing order will produce garbage data.
+          RenderCmdPushDataElm(&RenderData, &RenderDataSize, &CosSin, sizeof(CosSin));
+          RenderCmdPushDataElm(&RenderData, &RenderDataSize, &IsText, sizeof(IsText));
+          RenderCmdPushDataElm(&RenderData, &RenderDataSize, &BitmapData, sizeof(BitmapData));
+          *Entry = RenderEntry;
+        }
+        AdvX += GlyphAdvance;
+      }
     }
   }
   return;
@@ -380,6 +455,15 @@ extern "C" SIM_UPDATE(Update)
   {
     SimInit(AppState);
     AppState->IsInitialized = true;
+    entity   *Entity   =  AppState->Entities;
+    for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
+    {
+      if(Entity->Type == Entity_Moves)
+      {
+        Assert(Entity->Dim.x == 1.0f &&
+               Entity->Dim.y == 1.0f);
+      }
+    }
   }
   
   static f32 RotZ = 0.0f;
@@ -387,18 +471,25 @@ extern "C" SIM_UPDATE(Update)
   
   
   memory_arena TextArena = { 0 };
-  ArenaInit(&TextArena, KILOBYTES(3), AppMemory->TransientStorage);
+  ArenaInit(&TextArena, KILOBYTES(20), AppMemory->TransientStorage);
   memory_arena LineArena = { 0 };
   ArenaInit(&LineArena, KILOBYTES(20), (u8 *)AppMemory->TransientStorage + TextArena.Size);
   
-  
+  //RenderCmdPushRect(RenderBuffer, V3f(0.0, 0.0, 0.0f), V3f(4000.0f, 4000.0f, 1.0f), V3f(1.0f, 1.0f, 0.0f));
+  str8 MsPerFrameLabel = Str8FormatFromArena(&TextArena, "MSPerFrame: %.2f \n", AppState->DeltaTimeMS);
+  DrawSomeText(RenderBuffer, MsPerFrameLabel, 60, V3f(40.0f, 600.0f, 0.0f));
   entity   *Entity   =  AppState->Entities;
   for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
   {
+    if(Entity->Type == Entity_Moves)
+    {
+      Assert(Entity->Dim.x == 1.0f &&
+             Entity->Dim.y == 1.0f);
+    }
     if(Entity->Type == Entity_Moves && Entity->Exists)
     {
       // NOTE(MIGUEL): Speed is Meters/Second?
-      f32   Speed = 0.002f;
+      f32   Speed = 0.001f;
       v3f Drag  = {0.08f, 0.0f, 0.0f};
       v3f Acc   = Entity->Acc * 1.0f;
       v3f Vel   = Speed * (Entity->Vel);
@@ -411,7 +502,8 @@ extern "C" SIM_UPDATE(Update)
       u32 MaxCollisonIterations = 4;
       f32 NormalizedCollisionPoint = 1.0f;
       f32 RemainingTravelDistance = V3fLength(PosDelta);
-      
+      u32 ClosestEntityId = UINT32_MAX;
+      f32 ClosestEntityDist = 3.0f;
       u32 Iteration = 0;
       for(; Iteration < MaxCollisonIterations; Iteration++)
       {
@@ -424,8 +516,16 @@ extern "C" SIM_UPDATE(Update)
               TestEntity->Type == Entity_Moves) &&
              TestEntity->Exists)
           {
+            Assert(Entity->Dim.x == 1.0f &&
+                   Entity->Dim.y == 1.0f);
             /// TEST ENTITY SPACE
             v2f EntityPos = Entity->Pos.xy - TestEntity->Pos.xy;
+            f32 EntityDist = V3fLength(V3f(Entity->Pos.x, Entity->Pos.y, 0.0f));
+            if(EntityDist < ClosestEntityDist)
+            {
+              ClosestEntityDist = EntityDist;
+              ClosestEntityId = TestEntityIndex;
+            }
             
             r2f TestEntityBounds = R2fCenteredDim(TestEntity->Dim.xy);
             
@@ -436,7 +536,7 @@ extern "C" SIM_UPDATE(Update)
               goto ProcessNextEntity;
             }
             
-            ASSERT(Entity->Exists == true);
+            Assert(Entity->Exists == true);
             
             r2f MinkowskiTestEntityBounds = { 0 };
             MinkowskiTestEntityBounds = R2fAddRadiusTo(TestEntityBounds,
@@ -450,7 +550,7 @@ extern "C" SIM_UPDATE(Update)
               r2f MTB = {0};
               MTB.min = MinkowskiTestEntityBounds.min + WeirdOffset;
               MTB.max = MinkowskiTestEntityBounds.max + WeirdOffset;
-              //pDrawPerimeter(RenderBuffer, TestEntity->Pos, MTB, &LineArena);
+              //DrawPerimeter(RenderBuffer, TestEntity->Pos, MTB, &LineArena);
             }
             v3f WallNormal = { 0 };
             
@@ -519,42 +619,38 @@ extern "C" SIM_UPDATE(Update)
             }
           }
           
+          if(ClosestEntityId != UINT32_MAX)
+          {
+            //v3f Dir = V3fNormalize(TestEntity[ClosestEntityId].Pos - Entity->Pos);
+            //Entity->Vel = V3fLength(Entity->Vel) * V3fLerp(0.4f, V3fNormalize(Entity->Vel), Dir);
+          }
         }
         
-#if TEST
         Entity->Pos += PosDelta;
-#else
-        Entity->Pos += PosDelta;
-        f32 SpaceWidth  = 400.0f;
-        f32 SpaceHeight = 400.0f;
-        /*ASSERT(Entity->Pos.x <= SpaceWidth &&
-               Entity->Pos.y <= SpaceHeight);*/
         
-#endif
-        
-        v3f OldPos = Entity->Pos;
-        //Entity->Pos.x += 300;
-        //Entity->Pos.y += 300;
-        //300
-        Entity->Pos.x = OldPos.x;
-        Entity->Pos.y = OldPos.y;
         
       }
 #if 0
       
       v3f32 *CollisionPoints = ArenaPushArray(&LineArena, MaxCollisonIterations, v3f32);
       // NOTE(MIGUEL): 
-      CollisionPoints[Iteration] = v3f32Init(Entity->Pos.x, Entity->Pos.y, 0.5);
+      CollisionPoints[Iteration] = V3f(Entity->Pos.x, Entity->Pos.y, 0.5);
       DrawVector(RenderBuffer, Vel, Entity->Pos, &LineArena);
       
       u32 CollisionCount = Iteration;
-      v4f32 Color  = v4f32Init(1.0f, 1.0f, 1.0f, 1.0f);
+      v4f32 Color  = V4f(1.0f, 1.0f, 1.0f, 1.0f);
       DrawPath(RenderBuffer, CollisionPoints, CollisionCount, Color);
 #endif
     }
     
     ProcessNextEntity:
     u8 blah = 1;
+    
+    if(Entity->Type == Entity_Moves)
+    {
+      Assert(Entity->Dim.x == 1.0f &&
+             Entity->Dim.y == 1.0f);
+    }
   }
   
   Entity =  AppState->Entities;
@@ -562,18 +658,16 @@ extern "C" SIM_UPDATE(Update)
   {
     if(Entity->Exists)
     {
-      // TODO(MIGUEL): 
-      v3f OldPos = Entity->Pos;
-      
       DrawAABB(RenderBuffer, Entity, &LineArena);
-      PushRect(RenderBuffer, Entity->Pos, Entity->Dim, Entity->Vel);
-      
-      Entity->Pos.x = OldPos.x;
-      Entity->Pos.y = OldPos.y;
+      if(Entity->Type == Entity_Moves)
+      {
+        Assert(Entity->Dim.x == 1.0f &&
+               Entity->Dim.y == 1.0f);
+      }
+      RenderCmdPushRect(RenderBuffer, Entity->Pos,  Entity->Dim, Entity->Vel);
     }
     
   }
-  
   
   return;
 }

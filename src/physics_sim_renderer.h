@@ -9,7 +9,7 @@ struct bitmapdata
 {
   u32  Width;
   u32  Height;
-  u32 *Pixels;
+  u8  *Pixels;
   u32  BytesPerPixel;
 };
 
@@ -55,10 +55,12 @@ struct gpu_const_high
 {
   m4f World;
   v4f Color;
-  f32    Time;
-  f32    Width;
-  u32    JoinType;
-  f32   _padding[1];
+  f32 Time;
+  f32 Width;
+  u32 JoinType;
+  v3f PixelPos;
+  b32 IsTextured;
+  f32 _padding[17];
 };
 
 struct gpu_const_low
@@ -77,20 +79,22 @@ enum render_type
   RenderType_line,
 };
 
+#define RENDER_ENTRY_DATASEG_SIZE (256)
 struct render_entry
 {
   render_type Type;
   v3f Pos;
   v3f Dim;
   
-  u8 Data[256];
+  u8 Data[RENDER_ENTRY_DATASEG_SIZE];
 };
 
 struct render_buffer
 {
-  render_entry Entries[65536];
-  u32          EntryCount;
-  u32          EntryMaxCount;
+  render_entry  Entries[65536];
+  u32           EntryCount;
+  u32           EntryMaxCount;
+  memory_arena *PixelArena;
 };
 
 struct renderer
@@ -124,6 +128,8 @@ struct renderer
   //text stuff
   ID3D11Buffer           *TextSpriteVBuffer;
   ID3D11Buffer           *TextSpriteIBuffer;
+  ID3D11Texture2D        *TextTexResource;
+  ID3D11Texture2D        *SmileyTexResource;
   
   ID3D11ShaderResourceView *SmileyTexView;
   ID3D11SamplerState       *SmileySamplerState;
@@ -147,7 +153,7 @@ struct renderer
   HANDLE InUseShaderFileA;
   HANDLE InUseShaderFileB;
   
-  
+  memory_arena PixelArena;
   
   /// For real-time shader swaping
   WIN32_FIND_DATAA LineShaderFileInfo;
@@ -160,13 +166,31 @@ void RenderBufferInit(render_buffer *RenderBuffer)
 {
   RenderBuffer->EntryCount    = 0;
   RenderBuffer->EntryMaxCount = 65536;
-  
+  ArenaReset(RenderBuffer->PixelArena);
   return;
 }
 
+void RenderCmdPushDataElm(u8 **RenderData, size_t *RenderDataRegionSize, void *DataElem, size_t DataElemSize)
+{
+  Assert(RENDER_ENTRY_DATASEG_SIZE>=*RenderDataRegionSize);
+  MemoryCopy(DataElem, DataElemSize, *RenderData, *RenderDataRegionSize);
+  *RenderDataRegionSize -= DataElemSize;
+  *RenderData += DataElemSize;
+  return;
+}
 
-void PushLine(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f *PointList, u32 PointCount,
-              f32 Width, f32 BorderRatio, v4f Color)
+void RenderCmdPopDataElm(u8 **RenderData, size_t *BytesExtracted, void *DataElem, size_t DataElemSize)
+{
+  size_t RenderDataRegionSize = RENDER_ENTRY_DATASEG_SIZE;
+  Assert(DataElemSize<=(RenderDataRegionSize-*BytesExtracted));
+  MemoryCopy(*RenderData, DataElemSize, DataElem, DataElemSize);
+  *BytesExtracted += DataElemSize;
+  *RenderData += DataElemSize;
+  return;
+}
+
+void RenderCmdPushLine(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f *PointList, u32 PointCount,
+                       f32 Width, f32 BorderRatio, v4f Color)
 {
   if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
   {
@@ -175,8 +199,8 @@ void PushLine(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f *PointList, u32
     MemorySet(0, Entry, sizeof(render_entry) );
     
     render_entry  RenderEntry;
-    STATIC_ASSERT(sizeof(render_line) <= sizeof(RenderEntry.Data),
-                  render_entry_data_buffer_is_toosmall);
+    StaticAssert(sizeof(render_line) <= sizeof(RenderEntry.Data),
+                 render_entry_data_buffer_is_toosmall);
     
     RenderEntry.Type  = RenderType_line;
     RenderEntry.Pos   = Pos;
@@ -196,7 +220,7 @@ void PushLine(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f *PointList, u32
   return;
 }
 
-void PushRect(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin)
+void RenderCmdPushRect(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin)
 {
   if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
   {
@@ -209,8 +233,10 @@ void PushRect(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin)
     RenderEntry.Pos   = Pos;
     RenderEntry.Dim   = Dim;
     // TODO(MIGUEL): Add some checking
-    v3f *RenderData = (v3f *)&RenderEntry.Data;
-    *RenderData = CosSin;
+    u8 *RenderData = RenderEntry.Data;
+    size_t RenderDataSizeRemaining = RENDER_ENTRY_DATASEG_SIZE;
+    RenderCmdPushDataElm(&RenderData, &RenderDataSizeRemaining,
+                         &CosSin, sizeof(CosSin));
     
     *Entry = RenderEntry;
   }

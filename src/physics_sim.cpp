@@ -118,7 +118,7 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
   Result = Renderer->Context->Map(Renderer->TextSpriteVBuffer, 0,
                                   D3D11_MAP_WRITE_DISCARD, 0,
                                   &MapResource);
-  ASSERT(!FAILED(Result));
+  Assert(!FAILED(Result));
   
   
   
@@ -219,7 +219,7 @@ LoadBitmap(const char *FileName)
   
   void *Block = VirtualAlloc(0, FileSize32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   
-  ASSERT(Block);
+  Assert(Block);
   
   if(FileSize32 > 0)
   {
@@ -238,7 +238,7 @@ LoadBitmap(const char *FileName)
     bitmapheader *Header = (bitmapheader *)Block;
     u32 *Pixels = (u32 *)((u8 *)Block + Header->BitmapOffset);
     
-    Result.Pixels = Pixels;
+    Result.Pixels = (u8 *)Pixels;
     Result.Width  = Header->Width;
     Result.Height = Header->Height;
     Result.BytesPerPixel = (Header->BitsPerPixel / 8);
@@ -256,10 +256,10 @@ LoadBitmap(const char *FileName)
       bit_scan_result AlphaShift = FindLeastSignificantSetBit(AlphaMask);
       
       
-      ASSERT(  RedShift.Found);
-      ASSERT(GreenShift.Found);
-      ASSERT( BlueShift.Found);
-      ASSERT(AlphaShift.Found);
+      Assert(  RedShift.Found);
+      Assert(GreenShift.Found);
+      Assert( BlueShift.Found);
+      Assert(AlphaShift.Found);
       
       u32 *SrcDest = Pixels;
       
@@ -283,16 +283,21 @@ LoadBitmap(const char *FileName)
 
 static void
 D3D11InitTextureMapping(renderer                 *Renderer,
+                        ID3D11Texture2D **Texture,
+                        DXGI_FORMAT Format,
                         ID3D11ShaderResourceView **ResView,
                         ID3D11SamplerState       **SamplerState,
-                        bitmapdata               *Buffer)
+                        u32 SubresourceArraySize,
+                        bitmapdata *BitmapData)
 {
+  //u32 MaxBitmapWidth; 
+  //u32 MaxBitampHeigth;
   D3D11_TEXTURE2D_DESC TextDesc = { 0 };
-  TextDesc.Width  = Buffer->Width;
-  TextDesc.Height = Buffer->Height;
+  TextDesc.Width  = BitmapData->Width;
+  TextDesc.Height = BitmapData->Height;
   TextDesc.MipLevels = 1;
-  TextDesc.ArraySize = 1;
-  TextDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  TextDesc.ArraySize = SubresourceArraySize;
+  TextDesc.Format = Format;
   TextDesc.SampleDesc.Count   = 1;
   TextDesc.SampleDesc.Quality = 0;
   TextDesc.Usage     = D3D11_USAGE_DEFAULT;
@@ -300,14 +305,11 @@ D3D11InitTextureMapping(renderer                 *Renderer,
   TextDesc.CPUAccessFlags = 0;
   TextDesc.MiscFlags      = 0;
   
-  D3D11_SUBRESOURCE_DATA ResData = { 0 };
-  ResData.pSysMem     = Buffer->Pixels;
-  ResData.SysMemPitch = Buffer->Width * Buffer->BytesPerPixel;
+  D3D11_SUBRESOURCE_DATA SubresData = { 0 };
+  SubresData.pSysMem     = BitmapData->Pixels;
+  SubresData.SysMemPitch = BitmapData->Width * BitmapData->BytesPerPixel;
   
-  // TODO(MIGUEL): Figure out where to throw this
-  ID3D11Texture2D *Texture;
-  
-  Renderer->Device->CreateTexture2D(&TextDesc, &ResData, &Texture);
+  Renderer->Device->CreateTexture2D(&TextDesc, &SubresData, Texture);
   
   D3D11_SHADER_RESOURCE_VIEW_DESC ResViewDesc = { 0 };
   ResViewDesc.Format          = TextDesc.Format;
@@ -315,7 +317,7 @@ D3D11InitTextureMapping(renderer                 *Renderer,
   ResViewDesc.Texture2D.MostDetailedMip = 0;
   ResViewDesc.Texture2D.MipLevels       = 1;
   
-  Renderer->Device->CreateShaderResourceView(Texture, &ResViewDesc, ResView);
+  Renderer->Device->CreateShaderResourceView(*Texture, &ResViewDesc, ResView);
   
   D3D11_SAMPLER_DESC SamplerDesc = { 0 };
   SamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -324,9 +326,6 @@ D3D11InitTextureMapping(renderer                 *Renderer,
   SamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
   
   Renderer->Device->CreateSamplerState(&SamplerDesc, SamplerState);
-  
-  // TODO(MIGUEL): Move to render()
-  Renderer->Context->PSSetSamplers(0, 1, SamplerState);
   
   return;
 }
@@ -343,7 +342,7 @@ D3D11Release(renderer *Renderer)
 }
 
 static b32
-D3D11Init(HWND Window, renderer *Renderer)
+D3D11Startup(HWND Window, renderer *Renderer)
 {
   HRESULT Status;
   b32     Result = true;
@@ -396,7 +395,7 @@ D3D11Init(HWND Window, renderer *Renderer)
                                          &Renderer->Device,
                                          &Renderer->FeatureLevel, &Renderer->Context );
   
-  ASSERT(SUCCEEDED(Status));
+  Assert(SUCCEEDED(Status));
   
   
   ID3D11Texture2D        *BackBufferTexture;
@@ -410,7 +409,7 @@ D3D11Init(HWND Window, renderer *Renderer)
   
   BackBufferTexture->Release();
   
-  ASSERT(SUCCEEDED(Status));
+  Assert(SUCCEEDED(Status));
   
   
   Renderer->Context->OMSetRenderTargets(1, &Renderer->RenderTargetView, 0);
@@ -424,6 +423,14 @@ D3D11Init(HWND Window, renderer *Renderer)
   ViewPort.MaxDepth = 1.0f;
   
   Renderer->Context->RSSetViewports(1, &ViewPort);
+  
+  ArenaInit(&Renderer->PixelArena, KILOBYTES(500),
+            VirtualAlloc(0, 
+                         KILOBYTES(500),
+                         MEM_COMMIT | MEM_RESERVE,
+                         PAGE_READWRITE));
+  
+  Renderer->RenderBuffer.PixelArena = &Renderer->PixelArena;
   
   return Result;
 }
@@ -823,7 +830,7 @@ void CircleGeometry(v3f *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, 
     }
     else
     {
-      ASSERT("Out of Memory!!");
+      Assert("Out of Memory!!");
     }
   }
   
@@ -843,7 +850,7 @@ void CircleGeometry(v3f *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, 
     }
     else
     {
-      ASSERT("Out of Memory!!");
+      Assert("Out of Memory!!");
     }
   }
   
@@ -867,6 +874,7 @@ void DrawLine(renderer *Renderer,
   f32 WierdOffset = 300.0f;
   for(u32 Point=0; Point<PointCount;Point++)
   {
+    Assert(PointList[Point].z == 0.5f);
     PointList[Point] *= AppState->MeterToPixels;
     PointList[Point] = PointList[Point] + WierdOffset;
   }
@@ -1051,44 +1059,99 @@ Render(renderer *Renderer, app_memory *AppMemory)
     Renderer->Context->ClearRenderTargetView(Renderer->RenderTargetView, ClearColor.c);
     
 #if 1
-    render_buffer *RendererBuffer = &Renderer->RenderBuffer;
+    render_buffer *RenderBuffer = &Renderer->RenderBuffer;
     render_entry *RenderEntry    =  Renderer->RenderBuffer.Entries;
     
-    for(u32 Entry = 0; Entry < RendererBuffer->EntryCount; Entry++, RenderEntry++)
+    for(u32 Entry = 0; Entry < RenderBuffer->EntryCount; Entry++, RenderEntry++)
     {
       switch(RenderEntry->Type)
       {
         case RenderType_quad:
         {
+#if 1
+          u8 *RenderData = (u8 *)RenderEntry->Data;
+          size_t BytesExtracted = 0;
+          v3f CosSin = {0};
+          b32 IsText = {0};
+          bitmapdata BitmapData = {0};
+          // NOTE(MIGUEL): !!!CRITICAL!!!!This is very sensitive code. The order in which you 
+          //               pop elements matters. Changing order will produce garbage data.
+          RenderCmdPopDataElm(&RenderData, &BytesExtracted, &CosSin, sizeof(CosSin));
+          RenderCmdPopDataElm(&RenderData, &BytesExtracted, &IsText, sizeof(IsText));
+          RenderCmdPopDataElm(&RenderData, &BytesExtracted, &BitmapData, sizeof(BitmapData));
+          b32 IsTextured = 0;
+          m4f World  = {0};
+          f32 WierdOffset = 300.0f;
+          MemorySet(0, &Renderer->ConstBufferHigh, sizeof(Renderer->ConstBufferHigh));
+          if(IsText)
+          {
+#if 1
+            //ASSERT(0);
+            Renderer->TextTexResource->Release();
+            Renderer->TextTexView->Release();
+            Renderer->TextSamplerState->Release();
+            D3D11InitTextureMapping(Renderer,
+                                    &Renderer->TextTexResource,
+                                    DXGI_FORMAT_R8_UNORM,
+                                    &Renderer->TextTexView,
+                                    &Renderer->TextSamplerState,
+                                    1, &BitmapData);
+            
+            IsTextured = 1;
+            
+            // NOTE(MIGUEL): High Update Frequency
+            m4f Trans  = M4fTranslate(RenderEntry->Pos);
+            m4f Rotate = M4fRotate2D(CosSin.x, CosSin.y);
+            m4f Scale  = M4fScale   (RenderEntry->Dim.x,
+                                     RenderEntry->Dim.y, 1.0f);
+            World  = Trans * Rotate * Scale;
+            
+            Renderer->Context->PSSetShaderResources(0, 1, &Renderer->TextTexView);
+            Renderer->Context->PSSetSamplers       (0, 1, &Renderer->TextSamplerState);
+#endif
+            
+          }
+          else
+          {
+            // TODO(MIGUEL): There is something up with the operator overloading of v3f's +,*,etc
+            //               that disallows me the use the V3f() initializer. investigate it
+            // TODO(MIGUEL): Wall verts get compressed to a point for some reason. Thats why 
+            //               Wall quads arent visable. Fix it.
+            v3f PixelSpacePos = RenderEntry->Pos;
+            PixelSpacePos *= AppState->MeterToPixels;
+            PixelSpacePos.x+=WierdOffset;
+            PixelSpacePos.y+=WierdOffset;
+            v3f PixelSpaceDim = V3f(RenderEntry->Dim.x*AppState->MeterToPixels,
+                                    RenderEntry->Dim.y*AppState->MeterToPixels,
+                                    RenderEntry->Dim.z*AppState->MeterToPixels);
+            Renderer->ConstBufferHigh.PixelPos  = PixelSpacePos;
+            // NOTE(MIGUEL): High Update Frequency
+            m4f Trans  = M4fTranslate(PixelSpacePos);
+            m4f Rotate = M4fRotate2D(CosSin.x, CosSin.y);
+            m4f Scale  = M4fScale   (PixelSpaceDim.x,
+                                     PixelSpaceDim.y, 
+                                     PixelSpaceDim.z);
+            World  = Trans * Rotate * Scale ;
+          }
+          
+          
           // NOTE(MIGUEL): Sets the Model and How to Shade it
           u32 Stride[] = {sizeof(vertex)};
           u32 Offset[] = { 0 };
-          
-          Renderer->Context->IASetVertexBuffers(0, 1, &Renderer->QuadVBuffer, Stride, Offset);
-          Renderer->Context->IASetInputLayout(Renderer->InputLayout);
-          Renderer->Context->IASetIndexBuffer(Renderer->QuadIBuffer, DXGI_FORMAT_R16_UINT, 0 );
-          Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-          
-          v3f CosSin = *((v3f *)RenderEntry->Data);
-          f32 WierdOffset = 300.0f;
-          RenderEntry->Pos *= AppState->MeterToPixels;
-          RenderEntry->Pos.x+=WierdOffset;
-          RenderEntry->Pos.y+=WierdOffset;
-          // NOTE(MIGUEL): High Update Frequency
-          m4f Trans  = M4fTranslate(RenderEntry->Pos);
-          m4f Rotate = M4fRotate2D(CosSin.x, CosSin.y);
-          m4f Scale  = M4fScale   (RenderEntry->Dim.x*AppState->MeterToPixels,
-                                   RenderEntry->Dim.y*AppState->MeterToPixels, 1.0f);
-          m4f World  = Trans * Rotate * Scale;
-          
           
           // NOTE(MIGUEL): This is only because this constant buffer isnt set to
           //               dynamic.(UpdateSubresource() call)
           // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
           
           
+          Renderer->Context->IASetVertexBuffers(0, 1, &Renderer->QuadVBuffer, Stride, Offset);
+          Renderer->Context->IASetInputLayout(Renderer->InputLayout);
+          Renderer->Context->IASetIndexBuffer(Renderer->QuadIBuffer, DXGI_FORMAT_R16_UINT, 0 );
+          Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+          
           Renderer->ConstBufferHigh.Time   = AppState->Time;
           Renderer->ConstBufferHigh.World  = World;
+          Renderer->ConstBufferHigh.IsTextured  = IsTextured;
           
           D3D11_MAPPED_SUBRESOURCE QuadVBufferMap = { 0 };
           Renderer->Context->Map(Renderer->QuadVBuffer, 0,
@@ -1112,18 +1175,22 @@ Render(renderer *Renderer, app_memory *AppMemory)
           Renderer->Context->Unmap(Renderer->CBHigh, 0);
           
           Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-          Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
-          Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBLow);
+          Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBLow);
+          Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBHigh);
           Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
-          Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
-          Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
+          Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
+          Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
+          //Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
+          //Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
           
           Renderer->Context->DrawIndexed(ARRAY_COUNT(QuadMeshIndices), 0, 0);
+#endif
         }break;
         case RenderType_tri:
         {} break;
         case RenderType_line:
         {
+#if 1
           render_line *Line = (render_line *)RenderEntry->Data;
           
           f32 ScaledLineWidth = Line->Width * (1.0f - Line->BorderRatio);
@@ -1133,13 +1200,15 @@ Render(renderer *Renderer, app_memory *AppMemory)
           //v4f32Init(0.0f, 0.0f, 0.0f, 1.0f));
           DrawLine(Renderer, AppState, ScaledLineWidth,
                    Line->PointData, Line->PointCount, Line->Color);
-          
+#endif
         } break;
       }
     }
     
     /// TEXT
-#if 1
+#if 0
+    // NOTE(MIGUEL): This path executes a drqw call while some vertex buffer is still
+    //                bound.
     u32 TextSpriteStride[] = {sizeof(vertex)};
     u32 TextSpriteOffset[] = { 0 };
     
@@ -1341,7 +1410,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
                                             NULL,
                                             &Renderer->LineVBuffer);
     
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
     
     D3D11_BUFFER_DESC LineVInstDesc = { 0 };
     LineVInstDesc.Usage = D3D11_USAGE_DYNAMIC;
@@ -1353,7 +1422,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
                                             NULL,
                                             &Renderer->LineVInstBuffer);
     
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
     
     D3D11_BUFFER_DESC LineIDesc = { 0 };
     LineIDesc.Usage = D3D11_USAGE_DYNAMIC;
@@ -1365,7 +1434,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
                                             NULL,
                                             &Renderer->LineIBuffer);
     
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
     
     /// TRIANGLE
     D3D11_BUFFER_DESC TriangleVertDesc = { 0 };
@@ -1379,7 +1448,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Result = Renderer->Device->CreateBuffer(&TriangleVertDesc,
                                             &TriangleVertData,
                                             &Renderer->TriangleVBuffer );
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
     
     /// QUAD
     D3D11_BUFFER_DESC QuadVertDesc = { 0 };
@@ -1414,7 +1483,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Result = Renderer->Device->CreateBuffer(&QuadIndexDesc,
                                             &QuadIndexData,
                                             &Renderer->QuadIBuffer );
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
     
     /// TEXT SQUARE
     
@@ -1433,7 +1502,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Result = Renderer->Device->CreateBuffer(&TextSpriteVertDesc,
                                             0,
                                             &Renderer->TextSpriteVBuffer );
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
     
     D3D11_BUFFER_DESC TextSpriteIndexDesc = { 0 };
     TextSpriteIndexDesc.Usage          = D3D11_USAGE_DEFAULT;
@@ -1446,7 +1515,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Result = Renderer->Device->CreateBuffer(&TextSpriteIndexDesc,
                                             &TextSpriteIndexData,
                                             &Renderer->TextSpriteIBuffer );
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
   }
   
   
@@ -1468,7 +1537,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
                                             0,
                                             &Renderer->CBHigh);
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
     
     GPUConstantsDesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
     GPUConstantsDesc.Usage          = D3D11_USAGE_DYNAMIC;
@@ -1479,7 +1548,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
                                             &GPUConstantsResource,
                                             &Renderer->CBLow);
-    ASSERT(!FAILED(Result));
+    Assert(!FAILED(Result));
   }
   
   gVertexLayout[0].SemanticName         = "POSITION";
@@ -1526,7 +1595,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
                                   FILE_ATTRIBUTE_NORMAL,
                                   0);
   
-  ASSERT(*ShaderCodeHandle);
+  Assert(*ShaderCodeHandle);
   
   // NOTE(MIGUEL): Use an arena
   
@@ -1535,7 +1604,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
   
   ID3D11VertexShader *NewVertexShader;
   ID3D11PixelShader  *NewPixelShader;
-  ASSERT(LoadShader(Renderer,
+  Assert(LoadShader(Renderer,
                     &NewVertexShader,
                     &NewPixelShader,
                     &Renderer->InputLayout,
@@ -1597,14 +1666,14 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
                                       FILE_ATTRIBUTE_NORMAL,
                                       0);
   
-  ASSERT(*LineShaderCodeHandle);
+  Assert(*LineShaderCodeHandle);
   
   size_t LineShaderFileSize = ((LineShaderFileInfo->nFileSizeHigh << 31) |
                                (LineShaderFileInfo->nFileSizeLow));
   
   ID3D11VertexShader *NewLineVShader;
   ID3D11PixelShader  *NewLinePShader;
-  ASSERT(LoadShader(Renderer,
+  Assert(LoadShader(Renderer,
                     &NewLineVShader,
                     &NewLinePShader,
                     &Renderer->LineInputLayout,
@@ -1866,7 +1935,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
             AppMemory->TransientStorageSize,
             AppMemory->TransientStorage);
   
-  
+  // NOTE(MIGUEL): Should this load glyphs ???
   D3D11LoadResources(&g_Renderer, &AssetLoadingArena);
   
   ArenaDiscard(&AssetLoadingArena);
@@ -1874,13 +1943,18 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   g_Renderer.SmileyTex = LoadBitmap("..\\res\\frown.bmp");
   g_Renderer.TextTex   = LoadBitmap("..\\res\\text.bmp");
   
+  // NOTE(MIGUEL): First
   D3D11InitTextureMapping(&g_Renderer,
+                          &g_Renderer.SmileyTexResource,
+                          DXGI_FORMAT_B8G8R8A8_UNORM,
                           &g_Renderer.SmileyTexView,
-                          &g_Renderer.SmileySamplerState,
+                          &g_Renderer.SmileySamplerState, 1,
                           &g_Renderer.SmileyTex);
   D3D11InitTextureMapping(&g_Renderer,
+                          &g_Renderer.TextTexResource,
+                          DXGI_FORMAT_R8_UNORM,
                           &g_Renderer.TextTexView,
-                          &g_Renderer.TextSamplerState,
+                          &g_Renderer.TextSamplerState, 1,
                           &g_Renderer.TextTex);
   
   // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
@@ -2055,7 +2129,7 @@ void WinMainCRTStartup()
   }
   
   // NOTE(MIGUEL): Device is created for processing rasterization
-  if(D3D11Init(Window, &g_Renderer))
+  if(D3D11Startup(Window, &g_Renderer))
   {
     PhysicsSim(Window, &AppMemory);
   }

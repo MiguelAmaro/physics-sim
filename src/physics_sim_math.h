@@ -4,6 +4,7 @@
 #define PHYSICS_SIM_MATH_H
 
 #include "physics_sim_types.h"
+#include "float.h"
 #include <immintrin.h>
 #include "thirdparty\sse_mathisfun.h"
 
@@ -186,7 +187,6 @@ f32 Root(f32 Value)
   
   return Result;
 }
-
 
 //- VECTORS 
 
@@ -492,6 +492,17 @@ v3f operator -(v3f &A)
   return Result;
 }
 
+v3f operator -(v3f a, v3f b)
+{
+  v3f Result = { 0 };
+  
+  Result.x = a.x-b.x;
+  Result.y = a.y-b.y;
+  Result.z = a.z-b.z;
+  
+  return Result;
+}
+
 void operator *=(v3f &A, f32 Scalar)
 {
   v3f *Result = &A;
@@ -534,15 +545,13 @@ f32 V3fLength(v3f A)
   return Result;
 }
 
-v3f V3fNormalize(v3f A)
+v3f V3fNormalize(v3f a)
 {
   v3f Result = { 0.0f };
-  
-  f32 Magnitude = V3fLength(A);
-  
-  Result = V3f(A.x / Magnitude,
-               A.y / Magnitude,
-               A.z / Magnitude);
+  f32 Magnitude = V3fLength(a);
+  Result = V3f(a.x / Magnitude,
+               a.y / Magnitude,
+               a.z / Magnitude);
   
   return Result;
 }
@@ -557,6 +566,17 @@ v3f V3fHadamard(v3f A, v3f B)
   
   return Result;
 }
+
+v3f V3fLerp(f32 Bias, v3f a, v3f b)
+{
+  v3f Result = {0};
+  Result.x = a.x*(Bias)+b.x*(1.0f-Bias);
+  Result.y = a.y*(Bias)+b.y*(1.0f-Bias);
+  Result.z = a.z*(Bias)+b.z*(1.0f-Bias);
+  
+  return Result;
+};
+
 
 //- VECTOR 4D 
 v4f V4f(f32 x, f32 y, f32 z, f32 w)

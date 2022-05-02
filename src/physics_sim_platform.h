@@ -5,6 +5,4 @@
 
 #include "physics_sim_types.h"
 
-#define ASSERT(expression) if(!(expression)){ __debugbreak(); }
-
 #endif //PHYSICS_SIM_PLATFORM_H

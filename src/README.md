@@ -23,6 +23,10 @@
 * https://en.wikipedia.org/wiki/Adaptive_mesh_refinement
 * https://en.wikipedia.org/wiki/Quadtree
 
+**Text Layout/FreeType**
+* https://stackoverflow.com/questions/66265216/how-is-freetype-calculating-advance
+
+
 ### LOG
 
 **NOTE(MIGUEL): (04/08/2022)**
@@ -46,3 +50,17 @@ updated it could be a huge time sink. Fixed the problem where entities jump over
 hold window resize for to long. Dont keep functions that hand os events like window resize in timed sections
 of code. 
 
+**NOTE(MIGUEL): (04/29/2022)**
+
+Work on text rendering!!! Buffers are mememory resources that are mean to be used in a a flexible generic way
+and textures are memory resources intented to be used with rendering in mind. Texures all have the concept of a
+pixel element and they may also have more hardware functionality assoceiated. Im thinking D3DX 2d texture resource containing
+an array of 2d texture subresource where each slice is glyp bitmap. Textures are being dispatched to the gpu correctly but 
+they are not being rendered on to the screen.
+
+**NOTE(MIGUEL): (05/01/2022)**
+
+Tried to get d3d11 to render text glyph texutures onto my sprite but now quads wont render at all.
+Goal is to debug that before moving forward with text glyph stuff. Lookes at renderdoc on why quads wont
+render and nothing stook out. Coords seem reasonable but mesh overlay doesnt show up on texture viewer. 
+Ill comment out text render calls and first mega quad used of backdrop to try to isolate the problem.
