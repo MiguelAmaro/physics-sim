@@ -57,7 +57,8 @@ d3dcompiler.lib ^
 dinput8.lib ^
 dxguid.lib ^
 winmm.lib ^
-ws2_32.lib
+ws2_32.lib ^
+%PROJECT_DIR%"\thirdparty\freetype2\release dll\win64\freetype.lib"
 
 set MSVC_LINK_FLAGS= ^
 -nodefaultlib ^
@@ -112,7 +113,6 @@ cl ^
 -LD ^
 /link ^
 -PDB:%PROJECT_NAME%_%random%.pdb ^
-%PROJECT_DIR%"\thirdparty\freetype2\release dll\win64\freetype.lib" ^
 -EXPORT:Update
 
 rem del lock.tmp

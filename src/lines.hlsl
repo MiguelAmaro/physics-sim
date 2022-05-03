@@ -14,11 +14,17 @@ MILTER=2
 
 cbuffer ChangesEveryFrame : register(b1)
 {
+  //Chunk[0-4] 64 Bytes
   row_major matrix UWorld;
+  //Chunk[5] 16 Bytes
   float4           UColor;
+  //Chunk[6] 16 Bytes
+  float3           UPixelPos;
   float            UTime;
+  //Chunk[7] 16 Bytes
   float            UWidth;
   uint             UJoinType;
+  uint             UIsTextured;
 };
 
 struct VSInput

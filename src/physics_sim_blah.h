@@ -11,7 +11,6 @@
 
 #define TEST 1
 
-
 enum entity_type
 {
   Entity_Wall,

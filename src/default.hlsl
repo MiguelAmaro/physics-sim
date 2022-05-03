@@ -7,12 +7,16 @@ cbuffer ChangeOnResize : register(b0)
 
 cbuffer ChangesEveryFrame : register(b1)
 {
-  row_major matrix UWorld;
+  //Chunk[0-4] 64 Bytes
+  row_major matrix UWorld; 
+  //Chunk[5] 16 Bytes
   float4           UColor;
-  float            UTime;
-  float            UWidth;
-  uint             UJointType;
+  //Chunk[6] 16 Bytes
   float3           UPixelPos;
+  float            UTime;
+  //Chunk[7] 16 Bytes
+  float            UWidth;
+  uint             UJoinType;
   uint             UIsTextured;
 };
 
@@ -89,13 +93,14 @@ float4 PS_Main(PSInput Frag) : SV_TARGET
                             Tex.Sample(Sampler, Frag.Tex).r,
                             Tex.Sample(Sampler, Frag.Tex).r,
                             Tex.Sample(Sampler, Frag.Tex).r);
-  if(UIsTextured == 0)
+  if(UIsTextured == 1)
   {
     Color = TexSample;
   }
   else
   {
-    Color = lerp(float4(.10, .122,.18,1.), float4(v.x+v.y, v.x+v.y, v.x+v.y, 1.), 0.5f);
+    //Color = lerp(float4(.10, .122,.18,1.), float4(v.x+v.y, v.x+v.y, v.x+v.y, 1.), 0.5f);
+    Color = float4(1., 1., .0, 1.);
   }
   Color.w = 0.0f;
   return Color;

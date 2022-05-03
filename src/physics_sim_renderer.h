@@ -5,12 +5,22 @@
 #include "physics_sim_math.h"
 #include "physics_sim_types.h"
 
+
 struct bitmapdata
 {
   u32  Width;
   u32  Height;
   u8  *Pixels;
   u32  BytesPerPixel;
+};
+
+struct glyph_metrics
+{
+  v2f Dim;
+  // NOTE(MIGUEL): // Horizontl text layout
+  v2f Bearing; 
+  f32 Advance;
+  bitmapdata BitmapData; 
 };
 
 #pragma pack(push, 1)
@@ -51,17 +61,24 @@ struct render_line
 };
 
 // NOTE(MIGUEL): For constant buffer by update frequency(low, high, static)
+
+
 struct gpu_const_high
 {
+  //Chunk[0-4] 64 Bytes
   m4f World;
+  //Chunk[5] 16 Bytes
   v4f Color;
+  //Chunk[6] 16 Bytes
+  v3f PixelPos;
   f32 Time;
+  //Chunk[7] 16 Bytes
   f32 Width;
   u32 JoinType;
-  v3f PixelPos;
   b32 IsTextured;
-  f32 _padding[17];
+  u8 _padding[4];
 };
+
 
 struct gpu_const_low
 {
@@ -95,6 +112,8 @@ struct render_buffer
   u32           EntryCount;
   u32           EntryMaxCount;
   memory_arena *PixelArena;
+  glyph_metrics *GlyphMetrics;
+  
 };
 
 struct renderer
@@ -140,6 +159,7 @@ struct renderer
   bitmapdata TextTex;
   
   render_buffer RenderBuffer;
+  memory_arena  TextureArena;
   
   ID3D11Buffer *CBHigh;
   ID3D11Buffer *CBLow;
@@ -153,7 +173,7 @@ struct renderer
   HANDLE InUseShaderFileA;
   HANDLE InUseShaderFileB;
   
-  memory_arena PixelArena;
+  glyph_metrics GlyphMetrics[4096];
   
   /// For real-time shader swaping
   WIN32_FIND_DATAA LineShaderFileInfo;
@@ -166,7 +186,6 @@ void RenderBufferInit(render_buffer *RenderBuffer)
 {
   RenderBuffer->EntryCount    = 0;
   RenderBuffer->EntryMaxCount = 65536;
-  ArenaReset(RenderBuffer->PixelArena);
   return;
 }
 

@@ -1,14 +1,6 @@
 #include "physics_sim_blah.h"
 #include "physics_sim_assets.h"
-#include "physics_sim_assets.h"
 #include "windows.h"
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
-global b32 Reloaded = 1;
-global FT_Library FreeType;
-global FT_Face    Face;
 
 #define QUADTREE_CAP (4)
 struct qtree
@@ -111,13 +103,13 @@ static void SimInit(app_state *AppState)
   u32 EntityIndex = 0;
   f32 EntityDim = 1.0f;
   u32 EntitiesWanted = 10;
-  u32 VectorTableSize = ARRAY_COUNT(NormalizedVectorTable);
+  u32 VectorTableSize = ArrayCount(NormalizedVectorTable);
   
   f32 TurnFraction= GOLDEN_RATIO32;
-  u32 Resolution = 1;
+  //u32 Resolution = 1;
   f32 NumPoints = 100;
   f32 Radius = 20.0f-2.1f;
-  for(u32 Index=0; Index<NumPoints; Index++)
+  for(u32 Index=0; Index<(u32)NumPoints; Index++)
   {
     f32 Dist = Root((f32)Index/(NumPoints - 1.0f));
     f32 Theta = 2.0f*PI32*TurnFraction*(f32)Index;
@@ -294,65 +286,20 @@ DrawAABB(render_buffer *RenderBuffer, entity *Entity, memory_arena *LineArena)
   return;
 }
 
-#if 1
 void
 DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos)
 {
-  FT_Set_Pixel_Sizes(Face, 0, HeightInPixels);
-  FT_Glyph_Metrics *GlyphMetrics = &Face->glyph->metrics;
-  FT_Bitmap        *GlyphBitmap  = &Face->glyph->bitmap;
+  
+  // NOTE(MIGUEL): u32 HeightInPixels <- thinking of using this to size quads
+#if 1
   
   u32 Line = 0;
   f32 AdvX = Pos.x;
   for (u32 Index = 0; Index < Text.Length; Index++)
   {
     u32 CharCode = (u32)Text.Data[Index];
-    if (FT_Load_Char(Face, CharCode, FT_LOAD_RENDER))
-    {
-      Assert("FreeType Error: Could not load Glyph");
-      continue;
-    }
-    // NOTE(MIGUEL): Metrics in 26.6 Pixel Format  AdvanceX in 1/2048th vector units
-    f32 UnitConversion = 1.0f/64.0f;
-    //f32 UnitConversion = 1.0f/2048*100.0f; // NOTE(MIGUEL): Yields incorect pixel size
-    v2f  GlyphDim = V2f((f32)GlyphMetrics->width*UnitConversion,
-                        (f32)GlyphMetrics->height*UnitConversion);
-    
-    v2f  GlyphBearing = V2f((f32)GlyphMetrics->horiBearingX*UnitConversion,
-                            (f32)GlyphMetrics->horiBearingY* UnitConversion);
-    f32  GlyphAdvance = (f32)GlyphMetrics->horiAdvance*UnitConversion;
-    u8  *GlyphBitmapData = GlyphBitmap->buffer;
-    u32  GlyphBitmapSize = (u32)(GlyphDim.x * GlyphDim.y);
-    
-    u8 Message[4096] = {0};
-    stbsp_snprintf((char *)Message, 4096,
-                   "Glyph Metrics | "
-                   "H: %d  W: %d  | "
-                   "HoriAdv: %d   | "
-                   "BearingX: %d  | "
-                   "Bearing Y: %d | "
-                   "                "
-                   "Glyph Metrics OG| "
-                   "H: %d  W: %d  | "
-                   "HoriAdv: %d   | "
-                   "BearingX: %d  | "
-                   "Bearing Y: %d | "
-                   "\n",
-                   (u32)GlyphDim.x, (u32)GlyphDim.y,
-                   (u32)GlyphAdvance,
-                   (u32)GlyphBearing.x, (u32)GlyphBearing.y,
-                   GlyphMetrics->width, GlyphMetrics->height,
-                   GlyphMetrics->horiAdvance,
-                   GlyphMetrics->horiBearingX, GlyphMetrics->horiBearingY);
-    OutputDebugString((char *)Message);
-    // TODO(MIGUEL): Get a bitmap from Free type every time
-    //easy and slow
-    // TODO(MIGUEL): Bitmap arena. push bitmaps in and save and foward index to renderer and bind a texture
-    //               for the index for each drqw call
-    //Harder and more efficeient
-    // TODO(MIGUEL): Figure out storage for the bitmap. atlas or whatver, max size, bitmap dim uniformity
-    // TODO(MIGUEL): Figure out access in from an at atlas bitmap. instanced quads
-    
+    glyph_metrics GlyphMetrics = RenderBuffer->GlyphMetrics[CharCode];
+    bitmapdata BitmapData = GlyphMetrics.BitmapData;
     switch((u8)CharCode)
     {
       case '\r':
@@ -368,50 +315,19 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
       } break;
       default:
       {
-        f32 GlyphOffsetY = (GlyphDim.y - GlyphBearing.y);
-        f32 Width = GlyphDim.x;
-        f32 Height = GlyphDim.y;
-        u32 LineSpace = 0.0f;
+        f32 GlyphOffsetY = (GlyphMetrics.Dim.y - GlyphMetrics.Bearing.y);
+        f32 Width = GlyphMetrics.Dim.x;
+        f32 Height = GlyphMetrics.Dim.y;
+        f32 LineSpace = 0.0f;
         
         // NOTE(MIGUEL): Origin
-        f32 OrgX = AdvX + GlyphBearing.x;
-        f32 OrgY = Pos.y - GlyphOffsetY - (LineSpace * Line);
-#if 0
-        // TODO(MIGUEL): Use indeOrgXed Vertices instead. OnlOrgY After
-        //               implementing a simple IMUI and rendering 
-        //               api. Not a prioritOrgY.
-        teOrgXtured_verteOrgX QuadVerts[4] =
-        {
-          { OrgX + Width, OrgY + Height,   1.0f, 0.0f },
-          { OrgX + Width, OrgY,            1.0f, 1.0f },
-          { OrgX,         OrgY,            0.0f, 1.0f },
-          { OrgX,         OrgY + Height,   0.0f, 0.0f },            
-        };
-        u16 QuadIndices[6] = { 0, 1, 2, 0, 2, 3 };
-        //OPENGL_DBG(glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_ShORT, 0));
-#else
-        f32 vertices[6][4] =
-        {
-          { OrgX,         OrgY + Height,   0.0f, 0.0f },
-          { OrgX,         OrgY,            0.0f, 1.0f },
-          { OrgX + Width, OrgY,            1.0f, 1.0f },
-          
-          { OrgX,         OrgY + Height,   0.0f, 0.0f },            
-          { OrgX + Width, OrgY,            1.0f, 1.0f },
-          { OrgX + Width, OrgY + Height,   1.0f, 0.0f }           
-        };
-#endif
-        v3f GlyphQuadPos = V3f(OrgX+Width*0.0f, OrgY+Width*0.1f, 0.5f);
-        v3f GlyphQuadDim = V3f(GlyphDim.x*10.0f, GlyphDim.y*10.0f, 0.0f);
+        f32 OrgX = AdvX + GlyphMetrics.Bearing.x;
+        f32 OrgY = Pos.y - GlyphOffsetY - (LineSpace * (f32)Line);
+        
+        v3f GlyphQuadPos = V3f(OrgX+Width*0.0f, OrgY+Height*0.0f, 0.5f);
+        v3f GlyphQuadDim = V3f(GlyphMetrics.Dim.x*10.0f, GlyphMetrics.Dim.y*10.0f, 0.0f);
         v3f CosSin = V3f(0.1, 0.0f, 0.0f);
         b32 IsText = 1;
-        
-        bitmapdata BitmapData = {0};
-        BitmapData.Width = (u32)GlyphDim.x;
-        BitmapData.Height = (u32)GlyphDim.y;
-        BitmapData.Pixels = (u8 *)ArenaPushArray(RenderBuffer->PixelArena, GlyphBitmapSize, u8);
-        BitmapData.BytesPerPixel = sizeof(u8);
-        MemoryCopy(GlyphBitmapData, GlyphBitmapSize, BitmapData.Pixels, GlyphBitmapSize);
         if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
         {
           render_entry *Entry = RenderBuffer->Entries + RenderBuffer->EntryCount++;
@@ -429,34 +345,17 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
           RenderCmdPushDataElm(&RenderData, &RenderDataSize, &BitmapData, sizeof(BitmapData));
           *Entry = RenderEntry;
         }
-        AdvX += GlyphAdvance;
+        AdvX += GlyphMetrics.Advance;
       }
     }
   }
+#endif
   return;
 }
-#endif
 
 extern "C" SIM_UPDATE(Update)
 {
   app_state *AppState = (app_state *)AppMemory->PermanentStorage;
-  
-  if(Reloaded)
-  {
-    if (FT_Init_FreeType(&FreeType))
-    {
-      OutputDebugString("FreeType Error: Could not init FreeType Library");
-      Assert(0);
-    }
-    if (FT_New_Face(FreeType, "..\\res\\cour.ttf", 0, &Face))
-    {
-      OutputDebugString("FreeType Error: Could not load Font");
-      Assert(0);
-    }
-    
-    Reloaded = 0;
-  }
-  
   
   if(AppState->IsInitialized == false)
   {
@@ -667,12 +566,12 @@ extern "C" SIM_UPDATE(Update)
   {
     if(Entity->Exists)
     {
-      DrawAABB(RenderBuffer, Entity, &LineArena);
       if(Entity->Type == Entity_Moves)
       {
         Assert(Entity->Dim.x == 1.0f &&
                Entity->Dim.y == 1.0f);
       }
+      DrawAABB(RenderBuffer, Entity, &LineArena);
       RenderCmdPushRect(RenderBuffer, Entity->Pos,  Entity->Dim, Entity->Vel);
     }
     

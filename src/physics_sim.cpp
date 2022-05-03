@@ -18,13 +18,18 @@
 #include "physics_sim_renderer.h"
 #include "physics_sim_math.h"
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+global FT_Library FreeType;
+global FT_Face    Face;
 
 
 /// SET INPUT LAYOUT
-D3D11_INPUT_ELEMENT_DESC gVertexLayout[3] = { 0 };
-u32 gVertexLayoutCount = 3;
-D3D11_INPUT_ELEMENT_DESC gLineVLayout[3] = { 0 };
-u32 gLineVLayoutCount = 3;
+global D3D11_INPUT_ELEMENT_DESC gVertexLayout[3] = { 0 };
+global u32 gVertexLayoutCount = 3;
+global D3D11_INPUT_ELEMENT_DESC gLineVLayout[3] = { 0 };
+global u32 gLineVLayoutCount = 3;
 
 //-/ MACROS
 
@@ -100,7 +105,7 @@ void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
   HRESULT Result;
   
   u32 CharLimit     = 24;
-  //u32 SpriteSize    = sizeof(vertex) * ARRAY_COUNT(TextSpriteMeshVerts);
+  //u32 SpriteSize    = sizeof(vertex) * ArrayCount(TextSpriteMeshVerts);
   u32 MessageLength = S8Length(Message);
   
   if(MessageLength > CharLimit)
@@ -423,14 +428,6 @@ D3D11Startup(HWND Window, renderer *Renderer)
   ViewPort.MaxDepth = 1.0f;
   
   Renderer->Context->RSSetViewports(1, &ViewPort);
-  
-  ArenaInit(&Renderer->PixelArena, KILOBYTES(500),
-            VirtualAlloc(0, 
-                         KILOBYTES(500),
-                         MEM_COMMIT | MEM_RESERVE,
-                         PAGE_READWRITE));
-  
-  Renderer->RenderBuffer.PixelArena = &Renderer->PixelArena;
   
   return Result;
 }
@@ -890,7 +887,7 @@ void DrawLine(renderer *Renderer,
   //-LINE VERT DATA
   v3f LineVData[512] = { 0 };
   MemoryCopy(LineMeshVerts, sizeof(LineMeshVerts), LineVData, sizeof(LineMeshVerts));
-  MemoryCopy(JoinVerts, sizeof(JoinVerts), LineVData+ARRAY_COUNT(LineMeshVerts), sizeof(JoinVerts));
+  MemoryCopy(JoinVerts, sizeof(JoinVerts), LineVData+ArrayCount(LineMeshVerts), sizeof(JoinVerts));
   
   
   D3D11_MAPPED_SUBRESOURCE InstanceMap = { 0 };
@@ -919,7 +916,7 @@ void DrawLine(renderer *Renderer,
   // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
   
   
-  Renderer->ConstBufferHigh.Time = AppState->Time;
+  Renderer->ConstBufferHigh.Time = (f32)AppState->Time;
   Renderer->ConstBufferHigh.Width  = LineWidth;
   Renderer->ConstBufferHigh.Color  = Color;
   Renderer->ConstBufferHigh.JoinType  = 0;
@@ -943,7 +940,7 @@ void DrawLine(renderer *Renderer,
   Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
   Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
   
-  Renderer->Context->DrawInstanced(ARRAY_COUNT(LineMeshVerts), LineCount, 0, 0);
+  Renderer->Context->DrawInstanced(ArrayCount(LineMeshVerts), LineCount, 0, 0);
   
   //-
   D3D11_MAPPED_SUBRESOURCE JIMapped = { 0 };
@@ -954,9 +951,9 @@ void DrawLine(renderer *Renderer,
              JIMapped.pData, sizeof(u16)*JoinIndexCount);
   Renderer->Context->Unmap(Renderer->LineIBuffer, 0);
   
-  Renderer->ConstBufferHigh.Time = AppState->Time;
-  Renderer->ConstBufferHigh.Width  = LineWidth;
+  Renderer->ConstBufferHigh.Time = (f32)AppState->Time;
   Renderer->ConstBufferHigh.Color  = Color;
+  Renderer->ConstBufferHigh.Width  = LineWidth;
   Renderer->ConstBufferHigh.JoinType  = 1;
   
   Renderer->Context->Map(Renderer->CBHigh, 0,
@@ -1149,7 +1146,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
           Renderer->Context->IASetIndexBuffer(Renderer->QuadIBuffer, DXGI_FORMAT_R16_UINT, 0 );
           Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
           
-          Renderer->ConstBufferHigh.Time   = AppState->Time;
+          Renderer->ConstBufferHigh.Time   = (f32)AppState->Time;
           Renderer->ConstBufferHigh.World  = World;
           Renderer->ConstBufferHigh.IsTextured  = IsTextured;
           
@@ -1183,7 +1180,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
           //Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
           //Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
           
-          Renderer->Context->DrawIndexed(ARRAY_COUNT(QuadMeshIndices), 0, 0);
+          Renderer->Context->DrawIndexed(ArrayCount(QuadMeshIndices), 0, 0);
 #endif
         }break;
         case RenderType_tri:
@@ -1204,78 +1201,6 @@ Render(renderer *Renderer, app_memory *AppMemory)
         } break;
       }
     }
-    
-    /// TEXT
-#if 0
-    // NOTE(MIGUEL): This path executes a drqw call while some vertex buffer is still
-    //                bound.
-    u32 TextSpriteStride[] = {sizeof(vertex)};
-    u32 TextSpriteOffset[] = { 0 };
-    
-    Renderer->Context->IASetVertexBuffers(0, 1,
-                                          &Renderer->TextSpriteVBuffer,
-                                          TextSpriteStride,
-                                          TextSpriteOffset);
-    Renderer->Context->IASetInputLayout(Renderer->InputLayout);
-    Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    
-    // NOTE(MIGUEL): High Update Frequency
-    m4f Trans  = M4fTranslate(V3f(100.0f, 100.0f, 1.0f));
-    m4f Scale  = M4fScale   (800.0f, 800.0f, 1.0f);
-    m4f Rotate = M4fRotate(0.0f, 0.0f, 0.0f);
-    m4f World  = Rotate * Scale * Trans;
-    
-    Renderer->ConstBufferHigh.Time   = AppState->DeltaTimeMS;
-    Renderer->ConstBufferHigh.World  = World;
-    
-    D3D11_MAPPED_SUBRESOURCE MappedConst = { 0 };
-    Renderer->Context->Map(Renderer->CBHigh, 0,
-                           D3D11_MAP_WRITE_DISCARD,
-                           0, &MappedConst);
-    
-    MemoryCopy(&Renderer->ConstBufferHigh, sizeof(gpu_const_high), MappedConst.pData, sizeof(gpu_const_high));
-    Renderer->Context->Unmap(Renderer->CBHigh, 0);
-    
-    
-    Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-    Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBHigh);
-    Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBLow);
-    
-    
-    Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-    Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
-    Renderer->Context->PSSetShaderResources(0, 1, &Renderer->TextTexView);
-    Renderer->Context->PSSetSamplers       (0, 1, &Renderer->TextSamplerState);
-    
-    // NOTE(MIGUEL): Is this function in clip space??
-    DrawString("HELLO WORLD", -0.2f, 0.0f, Renderer);
-#endif
-#endif
-    
-#if 0
-    //-LINE DATA
-    f32 LineWidth = 5.0f;
-    u32 PointCount = 0;
-    v3f32 PointData[256 * 2] = { 0 };
-    v4f32  Color = {0.0f, 0.0f, 0.0f, 1.0f};
-    v4f32  Color1 = {1.0f, 1.0f, 1.0f, 1.0f};
-    
-    PointData[0] = v3f32Init(100.0, 100.0, 0.0);
-    PointCount++;
-    
-    PointData[1] = v3f32Init(200.0f+ 50.0f*Cosine(AppState->Time*0.001f),
-                             200.0f+ 50.0f*Sine(AppState->Time*0.001f), 0.0f);
-    PointCount++;
-    
-    PointData[2] = v3f32Init(300.0f+ 80.0f*Cosine(AppState->Time*0.004f),
-                             400.0f+ 50.0f*-Sine(AppState->Time*0.004f), 0.0f);
-    PointCount++;
-    PointData[3] = v3f32Init(400.0, 300.0, 0.0);
-    PointCount++;
-    PointData[4] = v3f32Init(100.0, 900.0, 0.0);
-    PointCount++;
-    DrawLine(Renderer, AppState, LineWidth, PointData, PointCount, Color);
-    DrawLine(Renderer, AppState, LineWidth*0.2f, PointData, PointCount, Color1);
 #endif
     //~/FLIP
     Renderer->SwapChain->Present(0 , 0);
@@ -1440,7 +1365,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     D3D11_BUFFER_DESC TriangleVertDesc = { 0 };
     TriangleVertDesc.Usage     = D3D11_USAGE_DEFAULT;
     TriangleVertDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    TriangleVertDesc.ByteWidth = sizeof(vertex) * ARRAY_COUNT(TriangleMeshVerts);
+    TriangleVertDesc.ByteWidth = sizeof(vertex) * ArrayCount(TriangleMeshVerts);
     
     D3D11_SUBRESOURCE_DATA TriangleVertData = { 0 };
     TriangleVertData.pSysMem = TriangleMeshVerts;
@@ -1487,7 +1412,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     
     /// TEXT SQUARE
     
-    u32 TextSpriteSize = sizeof(vertex) * ARRAY_COUNT(TextSpriteMeshVerts);
+    u32 TextSpriteSize = sizeof(vertex) * ArrayCount(TextSpriteMeshVerts);
     u32 CharLimit      = 24;
     
     D3D11_BUFFER_DESC TextSpriteVertDesc = { 0 };
@@ -1537,6 +1462,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
                                             0,
                                             &Renderer->CBHigh);
+    StaticAssert((sizeof(gpu_const_high)%16==0), D3D11_Const_buffer_not_a_multiple_of_16);
     Assert(!FAILED(Result));
     
     GPUConstantsDesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
@@ -1579,7 +1505,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
   
   memcpy(&Renderer->CurrentShaderPath,
          "..\\src\\default.hlsl",
-         ARRAY_COUNT("..\\src\\default.hlsl"));
+         ArrayCount("..\\src\\default.hlsl"));
   
   char *ShaderPath = Renderer->CurrentShaderPath;
   
@@ -1650,7 +1576,7 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
   
   memcpy(&Renderer->LineShaderPath,
          "..\\src\\lines.hlsl",
-         ARRAY_COUNT("..\\src\\lines.hlsl"));
+         ArrayCount("..\\src\\lines.hlsl"));
   
   char *LineShaderPath = Renderer->LineShaderPath;
   
@@ -1701,6 +1627,13 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
   Renderer->Device->CreateRasterizerState(&RasterizerDesc,
                                           &Renderer->Rasterizer);
   
+  u32 MemBlockSize = KILOBYTES(800);
+  ArenaInit(&Renderer->TextureArena, MemBlockSize, 
+            VirtualAlloc(0, 
+                         MemBlockSize ,
+                         MEM_COMMIT | MEM_RESERVE,
+                         PAGE_READWRITE));
+  ArenaReset(AssetLoadingArena);
   return;
 }
 
@@ -1926,6 +1859,89 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
   return;
 }
 
+void
+D3D11LoadTextGlyphs(renderer *Renderer, const char * FontFileName, u32 MaxHeightInPixels, memory_arena *AssetLoadingArena)
+{
+  if (FT_Init_FreeType(&FreeType))
+  {
+    OutputDebugString("FreeType Error: Could not init FreeType Library");
+    Assert(0);
+  }
+  if (FT_New_Face(FreeType, FontFileName, 0, &Face))
+  {
+    OutputDebugString("FreeType Error: Could not load Font");
+    Assert(0);
+  }
+  
+  FT_Set_Pixel_Sizes(Face, 0, MaxHeightInPixels);
+  FT_Glyph_Metrics *GlyphMetrics = &Face->glyph->metrics;
+  FT_Bitmap        *GlyphBitmap  = &Face->glyph->bitmap;
+  
+  u32 AsciiStart = 32;
+  u32 AsciiEnd = 126;
+  
+  for(u32 CharCode = AsciiStart; CharCode < AsciiEnd; CharCode++)
+  {
+    if (FT_Load_Char(Face, CharCode, FT_LOAD_RENDER))
+    {
+      Assert("FreeType Error: Could not load Glyph");
+      continue;
+    }
+    
+    f32 UnitConversion = 1.0f/64.0f;
+    //f32 UnitConversion = 1.0f/2048*100.0f; // NOTE(MIGUEL): Yields incorect pixel size
+    
+    glyph_metrics Metrics = {0};
+    Metrics.Dim = V2f((f32)GlyphMetrics->width*UnitConversion,
+                      (f32)GlyphMetrics->height*UnitConversion);
+    
+    Metrics.Bearing = V2f((f32)GlyphMetrics->horiBearingX*UnitConversion,
+                          (f32)GlyphMetrics->horiBearingY* UnitConversion);
+    Metrics.Advance = (f32)GlyphMetrics->horiAdvance*UnitConversion;
+    
+    u8  *GlyphBitmapData = GlyphBitmap->buffer;
+    u32  GlyphBitmapSize = (u32)(Metrics.Dim.x * Metrics.Dim.y);
+    
+    u8 Message[4096] = {0};
+    stbsp_snprintf((char *)Message, 4096,
+                   "Glyph Metrics: \"%c\" | "
+                   "H: %d  W: %d  | "
+                   "HoriAdv: %d   | "
+                   "BearingX: %d  | "
+                   "Bearing Y: %d | "
+                   "                "
+                   "Glyph Metrics OG| "
+                   "H: %d  W: %d  | "
+                   "HoriAdv: %d   | "
+                   "BearingX: %d  | "
+                   "Bearing Y: %d | "
+                   "\n",
+                   (char)CharCode,
+                   (u32)Metrics.Dim.x, (u32)Metrics.Dim.y,
+                   (u32)Metrics.Advance,
+                   (u32)Metrics.Bearing.x, (u32)Metrics.Bearing.y,
+                   GlyphMetrics->width, GlyphMetrics->height,
+                   GlyphMetrics->horiAdvance,
+                   GlyphMetrics->horiBearingX, GlyphMetrics->horiBearingY);
+    OutputDebugString((char *)Message);
+    
+    if(GlyphBitmapSize>0)
+    {
+      bitmapdata BitmapData = {0};
+      BitmapData.Width = (u32)Metrics.Dim.x;
+      BitmapData.Height = (u32)Metrics.Dim.y;
+      BitmapData.Pixels = (u8 *)ArenaPushArray(&Renderer->TextureArena, GlyphBitmapSize, u8);
+      BitmapData.BytesPerPixel = sizeof(u8);
+      MemoryCopy(GlyphBitmapData, GlyphBitmapSize, BitmapData.Pixels, GlyphBitmapSize);
+      
+      Metrics.BitmapData = BitmapData;
+      Renderer->GlyphMetrics[CharCode] = Metrics;
+    }
+  }
+  
+  return;
+}
+
 void PhysicsSim(HWND Window, app_memory *AppMemory)
 {
   renderer *Renderer = &g_Renderer;
@@ -1939,7 +1955,8 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   // NOTE(MIGUEL): Should this load glyphs ???
   D3D11LoadResources(Renderer, &AssetLoadingArena);
   
-  //PlatformLoadTextGlyphs(Renderer, "font" , &AssetLoadingArena);
+  D3D11LoadTextGlyphs(Renderer, "..\\res\\cour.ttf", 40, &AssetLoadingArena);
+  Renderer->RenderBuffer.GlyphMetrics = Renderer->GlyphMetrics;
   ArenaDiscard(&AssetLoadingArena);
   
   Renderer->SmileyTex = LoadBitmap("..\\res\\frown.bmp");
@@ -1979,17 +1996,8 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   char SimCodeDLLFullPathLock  [WIN32_STATE_FILE_NAME_COUNT];
   win32_BuildExePathFileName(&g_winstate, "lock.tmp",
                              sizeof(SimCodeDLLFullPathLock), SimCodeDLLFullPathLock);
-  
-  
   app_input Input;
   
-  /*
-  LARGE_INTEGER TickFrequency;
-  LARGE_INTEGER WorkStartTick;
-  LARGE_INTEGER WorkEndTick;
-  LARGE_INTEGER WorkTickDelta;
-  LARGE_INTEGER MicrosElapsedWorking;
-  */
   u64 TickFrequency = 0;
   u64 WorkStartTick = 0;
   u64 WorkEndTick = 0;
@@ -2000,9 +2008,6 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   f64 TicksToMicros = 1000000.0/(f64)TickFrequency;
   
   win32_sim_code SimCode = { 0 };
-  
-  //renderer *Renderer = &g_Renderer;
-  
   
   while (g_Running)
   {
@@ -2017,7 +2022,6 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
     g_WindowDim.Height = WindowDim.bottom - WindowDim.top;
     
     g_WindowResized = true;
-    
     
     if(!gPause || gFrameStep)
     {

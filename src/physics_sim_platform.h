@@ -5,6 +5,4 @@
 
 #include "physics_sim_types.h"
 
-
-
 #endif //PHYSICS_SIM_PLATFORM_H
