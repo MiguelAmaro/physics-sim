@@ -5,6 +5,10 @@
 
 #include <stdint.h>
 
+#define  SIM_NULL  (0)
+#define  SIM_TRUE  (1)
+#define  SIM_FALSE (0)
+
 //#define  fn
 #define global
 

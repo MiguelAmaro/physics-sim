@@ -49,6 +49,13 @@ struct bitmapheader
 };
 #pragma pack(pop)
 
+struct render_point
+{
+  v3f *PointData;
+  v4f  Color;
+  u32 Offset;
+  u32 PointCount;
+};
 
 struct render_line
 {
@@ -91,9 +98,10 @@ struct gpu_const_low
 
 enum render_type
 {
-  RenderType_tri,
+  RenderType_none,
   RenderType_quad,
   RenderType_line,
+  RenderType_point,
 };
 
 #define RENDER_ENTRY_DATASEG_SIZE (256)
@@ -208,6 +216,33 @@ void RenderCmdPopDataElm(u8 **RenderData, size_t *BytesExtracted, void *DataElem
   return;
 }
 
+void RenderCmdPushPoints(render_buffer *RenderBuffer, v3f *PointList, u32 PointCount, v4f Color)
+{
+  if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
+  {
+    render_entry *Entry = RenderBuffer->Entries + RenderBuffer->EntryCount++;
+    MemorySet(0, Entry, sizeof(render_entry) );
+    render_entry  RenderEntry;
+    RenderEntry.Type  = RenderType_point;
+    RenderEntry.Pos   = {0};
+    RenderEntry.Dim   = {0};
+    
+    render_point PointData = {0};
+    PointData.PointData  = PointList;
+    PointData.Offset     = 0;
+    PointData.PointCount = PointCount;
+    PointData.Color      = Color;
+    
+    u8 *   DataSegment     = RenderEntry.Data;
+    size_t DataSegmentSize = RENDER_ENTRY_DATASEG_SIZE;
+    RenderCmdPushDataElm(&DataSegment, &DataSegmentSize,
+                         &PointData, sizeof(PointData));
+    *Entry = RenderEntry;
+  }
+  
+  return;
+}
+
 void RenderCmdPushLine(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f *PointList, u32 PointCount,
                        f32 Width, f32 BorderRatio, v4f Color)
 {
@@ -225,21 +260,25 @@ void RenderCmdPushLine(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f *Point
     RenderEntry.Pos   = Pos;
     RenderEntry.Dim   = Dim;
     // TODO(MIGUEL): Add some checking
-    render_line *LineData = (render_line *)&RenderEntry.Data;
-    LineData->PointData  = PointList;
-    LineData->Offset     = 0;
-    LineData->PointCount = PointCount;
-    LineData->Color      = Color;
-    LineData->Width      = Width;
-    LineData->BorderRatio = BorderRatio;
+    render_line LineData = {0};
+    LineData.PointData  = PointList;
+    LineData.Offset     = 0;
+    LineData.PointCount = PointCount;
+    LineData.Color      = Color;
+    LineData.Width      = Width;
+    LineData.BorderRatio = BorderRatio;
     
+    u8 *   DataSegment     = RenderEntry.Data;
+    size_t DataSegmentSize = RENDER_ENTRY_DATASEG_SIZE;
+    RenderCmdPushDataElm(&DataSegment, &DataSegmentSize,
+                         &LineData, sizeof(LineData));
     *Entry = RenderEntry;
   }
   
   return;
 }
 
-void RenderCmdPushRect(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin)
+void RenderCmdPushQuad(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin)
 {
   if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
   {
@@ -262,5 +301,7 @@ void RenderCmdPushRect(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin
   
   return;
 }
+
+
 
 #endif // PHYSICS_SIM_RENDERER

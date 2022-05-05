@@ -107,15 +107,15 @@ static void SimInit(app_state *AppState)
   
   f32 TurnFraction= GOLDEN_RATIO32;
   //u32 Resolution = 1;
-  f32 NumPoints = 100;
-  f32 Radius = 20.0f-2.1f;
+  f32 NumPoints = 10;
+  f32 Radius = 10.0f;
   for(u32 Index=0; Index<(u32)NumPoints; Index++)
   {
     f32 Dist = Root((f32)Index/(NumPoints - 1.0f));
     f32 Theta = 2.0f*PI32*TurnFraction*(f32)Index;
     
-    v3f Point = V3f(Dist*Cosine(Theta),
-                    Dist*Sine  (Theta), 0.0f); 
+    v3f Point = V3f(Dist*Cosine(Theta)*Radius,
+                    Dist*Sine  (Theta)*Radius, 0.0f); 
     
     
     //for(u32 EntityIndex = 0; EntityIndex < EntitiesWanted; EntityIndex++)
@@ -133,12 +133,12 @@ static void SimInit(app_state *AppState)
       }
     }
     
-    if((ClosetDistance>EntityDim) &&
-       (EntityIndex<EntitiesWanted) &&
-       (AppState->EntityCount<AppState->EntityMaxCount))
+    //if((ClosetDistance>EntityDim) &&
+    //(EntityIndex<EntitiesWanted) &&
+    
+    if(AppState->EntityCount<AppState->EntityMaxCount)
     {
       Entity = AppState->Entities + AppState->EntityCount++;
-      
       
       LARGE_INTEGER Counter;
       QueryPerformanceCounter(&Counter);
@@ -149,8 +149,8 @@ static void SimInit(app_state *AppState)
       f32 DirX = NormalizedVectorTable[SeedX % VectorTableSize];
       f32 DirY = NormalizedVectorTable[SeedY % VectorTableSize];
       
-      Entity->Pos.x =  Radius*Point.x;
-      Entity->Pos.y =  Radius*Point.y;
+      Entity->Pos.x =  Point.x;
+      Entity->Pos.y =  Point.y;
       Entity->Pos.z =  0.0f;
       
       Entity->Dim.x = EntityDim;
@@ -286,6 +286,42 @@ DrawAABB(render_buffer *RenderBuffer, entity *Entity, memory_arena *LineArena)
   return;
 }
 
+struct point_cluster
+{
+  v3f *FirstPoint;
+  u32 PointCount;
+  memory_arena *Arena;
+  render_buffer *RenderBuffer;
+};
+
+point_cluster PointClusterInit(memory_arena *Arena, render_buffer *RenderBuffer)
+{
+  point_cluster Result = {0};
+  Result.FirstPoint = (v3f *)0;
+  Result.PointCount  = 0;
+  Result.Arena = Arena;
+  Result.RenderBuffer = RenderBuffer;
+  return Result;
+}
+
+void PointClusterPushPoint(point_cluster *Cluster, v3f Pos)
+{
+  v3f *Point = ArenaPushStruct(Cluster->Arena, v3f);
+  if(Cluster->FirstPoint==SIM_NULL) { Cluster->FirstPoint = Point; }
+  *Point = Pos;
+  Cluster->PointCount++;
+  return;
+}
+
+void DrawPointCluster(point_cluster *Cluster)
+{
+  v4f  Color = V4f(1.0, 0.0, 0.0, 0.0); 
+  RenderCmdPushPoints(Cluster->RenderBuffer,
+                      Cluster->FirstPoint,
+                      Cluster->PointCount, Color);
+  return;
+}
+
 void
 DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos)
 {
@@ -352,9 +388,20 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
 #endif
   return;
 }
-
+/*
+struct timed_block
+{
+  u64 StartCycleCount;
+  u32 Id;
+  timed_block (u32 Id) { BEGIN_TIMED_BLOCK_(StartCycleCount); }
+  ~timed_block(void  ) { END_TIMED_BLOCK_(StartCycleCount); }
+};
+*/
 extern "C" SIM_UPDATE(Update)
 {
+  //TIME_BLOCK();
+  u64 StartCycle = __rdtsc();
+  
   app_state *AppState = (app_state *)AppMemory->PermanentStorage;
   
   if(AppState->IsInitialized == false)
@@ -379,13 +426,37 @@ extern "C" SIM_UPDATE(Update)
   memory_arena TextArena = { 0 };
   ArenaInit(&TextArena, KILOBYTES(20), AppMemory->TransientStorage);
   memory_arena LineArena = { 0 };
-  ArenaInit(&LineArena, KILOBYTES(20), (u8 *)AppMemory->TransientStorage + TextArena.Size);
+  ArenaInit(&LineArena, KILOBYTES(10000), (u8 *)AppMemory->TransientStorage + TextArena.Size);
   
   //RenderCmdPushRect(RenderBuffer, V3f(0.0, 0.0, 0.0f), V3f(4000.0f, 4000.0f, 1.0f), V3f(1.0f, 1.0f, 0.0f));
   str8 MsPerFrameLabel = Str8FormatFromArena(&TextArena, "MSPerFrame: %.2f \n", AppState->DeltaTimeMS);
   str8 LongestFrameLabel = Str8FormatFromArena(&TextArena, "longestFrame: %.2f \n", AppState->LongestFrameTime);
   DrawSomeText(RenderBuffer, MsPerFrameLabel, 40, V3f(40.0f, 600.0f, 0.0f));
   DrawSomeText(RenderBuffer, LongestFrameLabel, 40, V3f(40.0f, 552.0f, 0.0f));
+  
+  f32 TurnFraction= GOLDEN_RATIO32;
+  f32 StartX = (4.0*-1.0)-0.5;
+  f32 StartY = (4.0*1.0)+0.5;
+  u32 NumPoints = 300;
+  point_cluster Cluster = PointClusterInit(&LineArena, RenderBuffer);
+  for(u32 PointIndex = 0; PointIndex < NumPoints; PointIndex++)
+  {
+    // TODO(MIGUEL): Debug the point that is missing and hanging out at the origin.
+    //f32 x = StartX + 1.0f * (f32)(PointIndex % 10);
+    //f32 y = StartY - 1.0f * (f32)(PointIndex / 10);
+    
+    f32 Radius = 10.0f;
+    
+    f32 Dist = Root((f32)PointIndex/(NumPoints - 1.0f));
+    f32 Theta = 2.0f*PI32*TurnFraction*(f32)PointIndex;
+    
+    f32 x = StartX + 1.0f * (f32)(PointIndex % 10);
+    f32 y = StartY - 1.0f * (f32)(PointIndex / 10);
+    PointClusterPushPoint(&Cluster, V3f(Dist*Cosine(Theta)*Radius,
+                                        Dist*Sine  (Theta)*Radius, 0.5f));
+  }
+  DrawPointCluster(&Cluster);
+  
   entity   *Entity   =  AppState->Entities;
   for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
   {
@@ -458,7 +529,7 @@ extern "C" SIM_UPDATE(Update)
               r2f MTB = {0};
               MTB.min = MinkowskiTestEntityBounds.min + WeirdOffset;
               MTB.max = MinkowskiTestEntityBounds.max + WeirdOffset;
-              //DrawPerimeter(RenderBuffer, TestEntity->Pos, MTB, &LineArena);
+              DrawPerimeter(RenderBuffer, TestEntity->Pos, MTB, &LineArena);
             }
             v3f WallNormal = { 0 };
             
@@ -571,11 +642,16 @@ extern "C" SIM_UPDATE(Update)
         Assert(Entity->Dim.x == 1.0f &&
                Entity->Dim.y == 1.0f);
       }
+      
       DrawAABB(RenderBuffer, Entity, &LineArena);
-      RenderCmdPushRect(RenderBuffer, Entity->Pos,  Entity->Dim, Entity->Vel);
+      RenderCmdPushQuad(RenderBuffer, Entity->Pos,  Entity->Dim, Entity->Vel);
     }
     
   }
   
+  u64 EndCycle = __rdtsc();
+  u64 CycleDelta = EndCycle-StartCycle;
+  str8 CycleLabel = Str8FormatFromArena(&TextArena, "Update Cycle: %.2I64d cycles\n", CycleDelta);
+  DrawSomeText(RenderBuffer, CycleLabel, 40, V3f(40.0f, 700.0f, 0.0f));
   return;
 }

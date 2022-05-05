@@ -99,85 +99,6 @@ S8Length(const char *String)
   return Count;
 }
 
-
-void DrawString(const char *Message, f32 x, f32 y, renderer *Renderer)
-{
-  HRESULT Result;
-  
-  u32 CharLimit     = 24;
-  //u32 SpriteSize    = sizeof(vertex) * ArrayCount(TextSpriteMeshVerts);
-  u32 MessageLength = S8Length(Message);
-  
-  if(MessageLength > CharLimit)
-  {
-    MessageLength = CharLimit;
-  }
-  
-  f32 CharWidth   = 32.0f / (f32)g_WindowDim.Width;
-  f32 CharHeight  = 32.0f / (f32)g_WindowDim.Height;
-  f32 TexelWidth  = 32.0f / 864.0f;
-  //u32 VertsPerLetter = 6;
-  
-  // NOTE(MIGUEL): Updating A Dynamic Vertex Buffer
-  D3D11_MAPPED_SUBRESOURCE MapResource;
-  Result = Renderer->Context->Map(Renderer->TextSpriteVBuffer, 0,
-                                  D3D11_MAP_WRITE_DISCARD, 0,
-                                  &MapResource);
-  Assert(!FAILED(Result));
-  
-  
-  
-  // Point to our vertex buffer’s internal data.
-  vertex *SpritePtr     = (vertex *)MapResource.pData;
-  
-  
-  u32 IndexA = (u32)'A';
-  u32 IndexZ = (u32)'Z';
-  
-  Renderer->Context->IASetIndexBuffer(Renderer->TextSpriteIBuffer, DXGI_FORMAT_R16_UINT, 0 );
-  for(u32 Index = 0; Index < MessageLength; ++Index)
-  {
-    f32 ThisStartX = x + (CharWidth * (f32)Index);
-    f32 ThisEndX = ThisStartX + CharWidth;
-    f32 ThisEndY = y + CharHeight;
-    
-    // NOTE(MIGUEL): Initializing the Mesh Values
-    
-    SpritePtr[0].Pos = V3f(ThisEndX  , ThisEndY, 1.0f); // V0
-    SpritePtr[1].Pos = V3f(ThisEndX  , y       , 1.0f); // V1
-    SpritePtr[2].Pos = V3f(ThisStartX, y       , 1.0f); // V2
-    SpritePtr[3].Pos = V3f(ThisStartX, ThisEndY, 1.0f); // V3
-    
-    u32 TexLookUp = 0;
-    u32 Letter = (u32)Message[Index];
-    
-    if(Letter < IndexA || Letter > IndexZ)
-    {
-      TexLookUp = (IndexZ - IndexA) + 1;
-    }
-    else
-    {
-      TexLookUp = (Letter - IndexA);
-    }
-    
-    float TUStart = 01.0f + (TexelWidth * (f32)TexLookUp);
-    float TUEnd   = TUStart + TexelWidth;
-    
-    SpritePtr[0].TexCoord = V2f(TUEnd  , 0.0f); // V0
-    SpritePtr[1].TexCoord = V2f(TUEnd  , 1.0f); // V1
-    SpritePtr[2].TexCoord = V2f(TUStart, 1.0f); // V2
-    SpritePtr[3].TexCoord = V2f(TUStart, 0.0f); // V3
-    
-    SpritePtr += 4;
-    
-    Renderer->Context->DrawIndexed((6),0 , 4 * Index);
-  }
-  
-  Renderer->Context->Unmap(Renderer->TextSpriteVBuffer, 0 );
-  
-  return;
-}
-
 bit_scan_result
 FindLeastSignificantSetBit(u32 Value)
 {
@@ -857,6 +778,92 @@ void CircleGeometry(v3f *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, 
   return;
 }
 
+void RenderPoints(renderer *Renderer,
+                  app_state *AppState,
+                  v3f *PointList,
+                  u32 PointCount,
+                  v4f Color)
+{
+  f32 WierdOffset = 300.0f;
+  for(u32 Point=0; Point<PointCount;Point++)
+  {
+    Assert(PointList[Point].z == 0.5f);
+    //PointList[Point] = V3f((f32)Point, (f32)Point, 0.5f);
+    PointList[Point] *= AppState->MeterToPixels;
+    PointList[Point] = PointList[Point] + WierdOffset;
+  }
+  
+  
+  v3f PointVerts  [16 + 1] = {0};
+  u16    PointIndeces[256] = {0};
+  u32 PointIndexCount = 0;
+  CircleGeometry(PointVerts, sizeof(PointVerts),
+                 PointIndeces, sizeof(PointIndeces),
+                 15, 0, &PointIndexCount);
+  //-
+  v3f LineVData[512] = { 0 };
+  MemoryCopy(LineMeshVerts, sizeof(LineMeshVerts), LineVData, sizeof(LineMeshVerts));
+  MemoryCopy(PointVerts, sizeof(PointVerts), LineVData+ArrayCount(LineMeshVerts), sizeof(PointVerts));
+  
+  D3D11_MAPPED_SUBRESOURCE InstanceMap = { 0 };
+  Renderer->Context->Map(Renderer->LineVInstBuffer,
+                         0, D3D11_MAP_WRITE_DISCARD, 0,
+                         &InstanceMap);
+  MemoryCopy(PointList, sizeof(v3f)*PointCount, InstanceMap.pData, sizeof(v3f)*PointCount);
+  Renderer->Context->Unmap(Renderer->LineVInstBuffer, 0);
+  
+  D3D11_MAPPED_SUBRESOURCE Mapped = { 0 };
+  Renderer->Context->Map(Renderer->LineVBuffer,
+                         0, D3D11_MAP_WRITE_DISCARD, 0,
+                         &Mapped);
+  MemoryCopy(LineVData, sizeof(LineVData), Mapped.pData, sizeof(LineVData));
+  Renderer->Context->Unmap(Renderer->LineVBuffer, 0);
+  
+  
+  D3D11_MAPPED_SUBRESOURCE JIMapped = { 0 };
+  Renderer->Context->Map(Renderer->LineIBuffer,
+                         0, D3D11_MAP_WRITE_DISCARD,
+                         0, &JIMapped);
+  MemoryCopy( PointIndeces, sizeof(u16)*PointIndexCount,
+             JIMapped.pData, sizeof(u16)*PointIndexCount);
+  Renderer->Context->Unmap(Renderer->LineIBuffer, 0);
+  
+  Renderer->ConstBufferHigh = {0};
+  Renderer->ConstBufferHigh.Time = (f32)AppState->Time;
+  Renderer->ConstBufferHigh.Color  = Color;
+  Renderer->ConstBufferHigh.Width  = 10;
+  Renderer->ConstBufferHigh.JoinType  = 1;
+  
+  D3D11_MAPPED_SUBRESOURCE MappedHigh = { 0 };
+  Renderer->Context->Map(Renderer->CBHigh, 0,
+                         D3D11_MAP_WRITE_DISCARD,
+                         0, &MappedHigh);
+  MemoryCopy( &Renderer->ConstBufferHigh, sizeof(gpu_const_high), 
+             MappedHigh.pData, sizeof(gpu_const_high));
+  Renderer->Context->Unmap(Renderer->CBHigh, 0);
+  
+  ID3D11Buffer *PVBuffers[2] = { Renderer->LineVBuffer, Renderer->LineVInstBuffer };
+  UINT          PVStrides[2] = { sizeof(v3f), sizeof(v3f)};
+  UINT          PVOffsets[2] = { sizeof(LineMeshVerts), 0};
+  
+  Renderer->Context->IASetVertexBuffers(0, 2, PVBuffers, PVStrides, PVOffsets);
+  Renderer->Context->IASetInputLayout(Renderer->LineInputLayout);
+  Renderer->Context->IASetIndexBuffer(Renderer->LineIBuffer, DXGI_FORMAT_R16_UINT, 0 );
+  Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+  
+  Renderer->Context->VSSetShader(Renderer->LineVShader, 0, 0);
+  Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBLow);
+  Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBHigh);
+  
+  Renderer->Context->PSSetShader(Renderer->LinePShader, 0, 0);
+  Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
+  Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
+  Renderer->Context->RSSetState(Renderer->Rasterizer);
+  
+  Renderer->Context->DrawIndexedInstanced(PointIndexCount, PointCount, 0, 0, 0);
+  
+  return;
+}
 
 void DrawLine(renderer *Renderer,
               app_state *AppState,
@@ -888,7 +895,6 @@ void DrawLine(renderer *Renderer,
   v3f LineVData[512] = { 0 };
   MemoryCopy(LineMeshVerts, sizeof(LineMeshVerts), LineVData, sizeof(LineMeshVerts));
   MemoryCopy(JoinVerts, sizeof(JoinVerts), LineVData+ArrayCount(LineMeshVerts), sizeof(JoinVerts));
-  
   
   D3D11_MAPPED_SUBRESOURCE InstanceMap = { 0 };
   Renderer->Context->Map(Renderer->LineVInstBuffer,
@@ -985,7 +991,6 @@ void DrawLine(renderer *Renderer,
   
   return;
 }
-
 
 void
 Render(renderer *Renderer, app_memory *AppMemory)
@@ -1183,8 +1188,6 @@ Render(renderer *Renderer, app_memory *AppMemory)
           Renderer->Context->DrawIndexed(ArrayCount(QuadMeshIndices), 0, 0);
 #endif
         }break;
-        case RenderType_tri:
-        {} break;
         case RenderType_line:
         {
 #if 1
@@ -1198,6 +1201,24 @@ Render(renderer *Renderer, app_memory *AppMemory)
           DrawLine(Renderer, AppState, ScaledLineWidth,
                    Line->PointData, Line->PointCount, Line->Color);
 #endif
+        } break;
+        case RenderType_point:
+        {
+#if 1
+          u8 *DataSegment = RenderEntry->Data;
+          size_t DataSegmentReadByteCount = 0;
+          render_point PointData = {0};
+          RenderCmdPopDataElm(&DataSegment, &DataSegmentReadByteCount,
+                              &PointData, sizeof(PointData));
+          RenderPoints(Renderer, AppState,
+                       PointData.PointData,
+                       PointData.PointCount,
+                       PointData.Color);
+#endif
+        } break;
+        case RenderType_none:
+        {
+          
         } break;
       }
     }
@@ -2014,7 +2035,6 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
     // NOTE(MIGUEL): Start Timer
     
     ProcessPendingMessages(&Input);
-    QueryPerformanceCounter((LARGE_INTEGER *)&WorkStartTick);
     
     RECT WindowDim;
     GetClientRect(Window, &WindowDim);
@@ -2025,6 +2045,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
     
     if(!gPause || gFrameStep)
     {
+      QueryPerformanceCounter((LARGE_INTEGER *)&WorkStartTick);
       memory_arena ShaderLoadingArena;
       
       ArenaInit(&ShaderLoadingArena,
@@ -2063,38 +2084,39 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
         SimCode.Update(AppMemory, &g_Renderer.RenderBuffer);
       }
       Render(&g_Renderer, AppMemory);
+      
+      QueryPerformanceCounter((LARGE_INTEGER *)&WorkEndTick);
+      
+      
+      WorkTickDelta        = WorkEndTick - WorkStartTick;
+      MicrosElapsedWorking = (f64)WorkTickDelta*TicksToMicros;
+      
+      // NOTE(MIGUEL): Idle
+      u64 IdleTickDelta = 0;
+      u64 IdleStartTick = WorkEndTick;
+      u64 IdleEndTick = 0;
+      f64 MicrosElapsedIdle = 0.0;
+      
+      while((MicrosElapsedWorking+MicrosElapsedIdle)<TargetMicrosPerFrame)
+      {
+        QueryPerformanceCounter((LARGE_INTEGER *)&IdleEndTick);
+        IdleTickDelta = IdleEndTick-IdleStartTick;
+        MicrosElapsedIdle = (f64)IdleTickDelta*TicksToMicros;
+      }
+      
+      // NOTE(MIGUEL): Fuck this is sloppy
+      app_state *AppState = (app_state *)AppMemory->PermanentStorage;
+      f64 FrameTimeMS = (MicrosElapsedWorking+MicrosElapsedIdle)/1000.0;
+      if(FrameTimeMS>AppState->LongestFrameTime)
+      {
+        AppState->LongestFrameTime = FrameTimeMS;
+      }
+      AppState->DeltaTimeMS  = TargetMicrosPerFrame/ 1000;
+      AppState->DeltaTimeMS  = FrameTimeMS;
+      AppState->Time        += AppState->DeltaTimeMS;
+      
+      gFrameStep = gFrameStep == 1?0:1;
     }
-    
-    gFrameStep = gFrameStep == 1?0:1;
-    
-    QueryPerformanceCounter((LARGE_INTEGER *)&WorkEndTick);
-    WorkTickDelta        = WorkEndTick - WorkStartTick;
-    MicrosElapsedWorking = (f64)WorkTickDelta*TicksToMicros;
-    
-    // NOTE(MIGUEL): Idle
-    u64 IdleTickDelta = 0;
-    u64 IdleStartTick = WorkEndTick;
-    u64 IdleEndTick = 0;
-    f64 MicrosElapsedIdle = 0.0;
-    
-    while((MicrosElapsedWorking+MicrosElapsedIdle)<TargetMicrosPerFrame)
-    {
-      QueryPerformanceCounter((LARGE_INTEGER *)&IdleEndTick);
-      IdleTickDelta = IdleEndTick-IdleStartTick;
-      MicrosElapsedIdle = (f64)IdleTickDelta*TicksToMicros;
-    }
-    
-    // NOTE(MIGUEL): Fuck this is sloppy
-    app_state *AppState = (app_state *)AppMemory->PermanentStorage;
-    f64 FrameTimeMS = (MicrosElapsedWorking+MicrosElapsedIdle)/1000.0;
-    if(FrameTimeMS>AppState->LongestFrameTime)
-    {
-      AppState->LongestFrameTime = FrameTimeMS;
-    }
-    AppState->DeltaTimeMS  = TargetMicrosPerFrame/ 1000;
-    AppState->DeltaTimeMS  = FrameTimeMS;
-    AppState->Time        += AppState->DeltaTimeMS;
-    
     
   }
   
