@@ -11,7 +11,7 @@ if "%OPTION%" equ "-rdoc" (goto :RENDERDOC)
 goto :REMEDY rem !!!DEFAULT PATH!!!
 
 :REMEDY
-call F:\Dev_Tools\RemedyBG\release_0.3.6.3\remedybg.exe -g -q %DEBUG_FILE%
+call F:\Dev_Tools\RemedyBG\release_0.3.7.1\remedybg.exe -g -q %DEBUG_FILE%
 goto eof
 
 :RENDERDOC

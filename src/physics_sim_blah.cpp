@@ -102,7 +102,6 @@ static void SimInit(app_state *AppState)
   // NOTE(MIGUEL): Moving Entities
   u32 EntityIndex = 0;
   f32 EntityDim = 1.0f;
-  u32 EntitiesWanted = 10;
   u32 VectorTableSize = ArrayCount(NormalizedVectorTable);
   
   f32 TurnFraction= GOLDEN_RATIO32;
@@ -207,6 +206,20 @@ Intersects(f32 *NearestNormalizedCollisionPoint,
   }
   
   return Result;
+}
+
+void DrawRect(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f EulerAngles, v4f Color)
+{
+  RenderCmdPushQuad(RenderBuffer, Pos, Dim, EulerAngles, 0, Color);
+  return;
+}
+
+void DrawRect(render_buffer *RenderBuffer, r2f Rect, v3f EulerAngles, v4f Color)
+{
+  v3f Dim = V3f(Rect.max.x - Rect.min.x, Rect.max.y - Rect.min.y, 0.0f);
+  v3f Pos = V3f(Rect.min.x + Dim.x*0.5f, Rect.min.y + Dim.y*0.5f, 0.5f);
+  RenderCmdPushQuad(RenderBuffer, Pos, Dim, EulerAngles, 0, Color);
+  return;
 }
 
 void
@@ -323,7 +336,7 @@ void DrawPointCluster(point_cluster *Cluster)
 }
 
 void
-DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos)
+DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos, v4f Color)
 {
   
   // NOTE(MIGUEL): u32 HeightInPixels <- thinking of using this to size quads
@@ -364,6 +377,7 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
         v3f GlyphQuadDim = V3f(GlyphMetrics.Dim.x*10.0f, GlyphMetrics.Dim.y*10.0f, 0.0f);
         v3f CosSin = V3f(0.1, 0.0f, 0.0f);
         b32 IsText = 1;
+        b32 IsUI = 1;
         if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
         {
           render_entry *Entry = RenderBuffer->Entries + RenderBuffer->EntryCount++;
@@ -376,7 +390,9 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
           size_t RenderDataSize = RENDER_ENTRY_DATASEG_SIZE;
           // NOTE(MIGUEL): !!!CRITICAL!!!!This is very sensitive code. The order in which you 
           //               pop elements matters. Changing order will produce garbage data.
+          RenderCmdPushDataElm(&RenderData, &RenderDataSize, &Color, sizeof(Color));
           RenderCmdPushDataElm(&RenderData, &RenderDataSize, &CosSin, sizeof(CosSin));
+          RenderCmdPushDataElm(&RenderData, &RenderDataSize, &IsUI, sizeof(IsUI));
           RenderCmdPushDataElm(&RenderData, &RenderDataSize, &IsText, sizeof(IsText));
           RenderCmdPushDataElm(&RenderData, &RenderDataSize, &BitmapData, sizeof(BitmapData));
           *Entry = RenderEntry;
@@ -388,21 +404,148 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
 #endif
   return;
 }
-/*
-struct timed_block
+
+
+
+void UIButton(u8 *Label)
 {
-  u64 StartCycleCount;
-  u32 Id;
-  timed_block (u32 Id) { BEGIN_TIMED_BLOCK_(StartCycleCount); }
-  ~timed_block(void  ) { END_TIMED_BLOCK_(StartCycleCount); }
-};
-*/
+  // Click Response
+  
+  //...
+  
+  // EndClick Response
+  render_buffer *RenderBuffer = GlobalUIState.RenderBuffer;
+  r2f Rect = ActiveUILayout->Rect;
+  v4f Color = ActiveUILayout->Color;
+  v3f EulerAngles = V3f(1.0, 0.0, 0.0);
+  v3f Dim = V3f(Rect.max.x - Rect.min.x, Rect.max.y - Rect.min.y, 0.0f);
+  v3f Pos = V3f(Rect.min.x + Dim.x*0.5f, Rect.min.y + Dim.y*0.5f, 0.5f);
+  RenderCmdPushQuad(RenderBuffer, Pos, Dim, EulerAngles, 1, Color);
+  str8 Text = Str8FromCStr(Label);
+  DrawSomeText(RenderBuffer, Text, 0, V3f(Rect.min.x, Pos.y, 0.0f), V4f(1.0,1.0,0.0,1.0));
+  //Set Layout state for next
+  ActiveUILayout->Rect.min.y -= ActiveUILayout->Offset.y;
+  ActiveUILayout->Rect.max.y -= ActiveUILayout->Offset.y;
+  return;
+}
+
+
+
+void UIButton(render_buffer *RenderBuffer, ui_layout *Layout, u8 *Label)
+{
+  // Click Response
+  
+  //...
+  
+  // EndClick Response
+  
+  r2f Rect = Layout->Rect;
+  v3f EulerAngles = V3f(1.0, 0.0, 0.0);
+  v3f Dim = V3f(Rect.max.x - Rect.min.x, Rect.max.y - Rect.min.y, 0.0f);
+  v3f Pos = V3f(Rect.min.x + Dim.x*0.5f, Rect.min.y + Dim.y*0.5f, 0.5f);
+  RenderCmdPushQuad(RenderBuffer, Pos, Dim, EulerAngles, 1, Layout->Color);
+  str8 Text = Str8FromCStr(Label);
+  DrawSomeText(RenderBuffer, Text, 0, V3f(Rect.min.x, Pos.y, 0.0f), V4f(1.0,1.0,0.0,1.0));
+  //Set Layout state for next
+  Layout->Rect.min.y -= Layout->Offset.y;
+  Layout->Rect.max.y -= Layout->Offset.y;
+  return;
+}
+
+
+void UIButton(render_buffer *RenderBuffer, u8 *Label, r2f Rect)
+{
+  // Click Response
+  
+  //...
+  
+  // EndClick Response
+  
+  //r2f Rect = R2f(10.0f, 100.0f, 200.0f, 150.0f);
+  v3f EulerAngles = V3f(1.0, 0.0, 0.0);
+  v3f Dim = V3f(Rect.max.x - Rect.min.x, Rect.max.y - Rect.min.y, 0.0f);
+  v3f Pos = V3f(Rect.min.x + Dim.x*0.5f, Rect.min.y + Dim.y*0.5f, 0.5f);
+  RenderCmdPushQuad(RenderBuffer, Pos, Dim, EulerAngles, 1, V4f(0.7f,0.7f,.7f,1.0f));
+  str8 Text = Str8FromCStr(Label);
+  DrawSomeText(RenderBuffer, Text, 0, V3f(Rect.min.x, Pos.y, 0.0f), V4f(1.0f,0.0f,1.0f,1.0f));
+  return;
+}
+
+ui_layout UILayoutInit(r2f Rect, v2f Offset, v4f Color)
+{
+  ui_layout Result = {0};
+  Result.Color = Color;
+  Result.Rect = Rect;
+  Result.Offset = Offset;
+  return Result;
+}
+
+void UILayoutSelect(ui_layout *Layout)
+{
+  ActiveUILayout = Layout;
+  return;
+}
+
+ui_layout *UILayoutTop(void)
+{
+  ui_state *State = &GlobalUIState;
+  ui_layout *TopLayout = State->LayoutStack + State->LayoutCount - 1;
+  return TopLayout;
+}
+
+void UILayoutPop()
+{
+  ui_state *State = &GlobalUIState;
+  if(State->LayoutCount > 0)
+  {
+    State->LayoutCount--;
+    ui_layout *PoppedLayout   = State->LayoutStack + State->LayoutCount;
+    ui_layout *RestoredLayout = UILayoutTop();
+    MemorySet(0, PoppedLayout, sizeof(ui_layout));
+    ActiveUILayout = RestoredLayout;
+  }
+  return;
+}
+
+void UILayoutPush(ui_layout Layout)
+{
+  ui_state *State = &GlobalUIState;
+  if(State->LayoutCount < State->LayoutMaxCount)
+  {
+    if(State->LayoutCount>0)
+    {
+      ui_layout Parent = *ActiveUILayout;
+      Layout.Rect.min.x = Parent.Rect.min.x - Layout.Rect.min.x;
+      Layout.Rect.max.x = Layout.Rect.min.x + Layout.Rect.max.x;
+      
+      Layout.Rect.max.y = Parent.Rect.max.y - Layout.Rect.max.y;
+      Layout.Rect.min.y = Layout.Rect.max.y + Layout.Rect.min.y;
+    }
+    ui_layout *NewLayout = State->LayoutStack + State->LayoutCount++;
+    *NewLayout = Layout;
+    
+    ActiveUILayout = NewLayout;
+  }
+  return;
+}
+
+void UIStateInit(render_buffer *RenderBuffer)
+{
+  ui_state Result = {0};
+  Result.RenderBuffer = RenderBuffer;
+  Result.LayoutCount = 0;
+  Result.LayoutMaxCount = 256;
+  GlobalUIState = Result;
+  return;
+}
+
+
 extern "C" SIM_UPDATE(Update)
 {
-  //TIME_BLOCK();
-  u64 StartCycle = __rdtsc();
-  
+  //TIMED_BLOCK;
+  //BEGIN_TIMED_BLOCK(Update);
   app_state *AppState = (app_state *)AppMemory->PermanentStorage;
+  GlobalDebugState = AppState;
   
   if(AppState->IsInitialized == false)
   {
@@ -422,23 +565,24 @@ extern "C" SIM_UPDATE(Update)
   static f32 RotZ = 0.0f;
   RotZ += 0.2f;
   
+  memory_arena *TextArena = &AppState->TextArena;
+  memory_arena *LineArena = &AppState->LineArena;
   
-  memory_arena TextArena = { 0 };
-  ArenaInit(&TextArena, KILOBYTES(20), AppMemory->TransientStorage);
-  memory_arena LineArena = { 0 };
-  ArenaInit(&LineArena, KILOBYTES(10000), (u8 *)AppMemory->TransientStorage + TextArena.Size);
+  ArenaInit(TextArena, KILOBYTES(20), AppMemory->TransientStorage);
+  ArenaInit(LineArena, KILOBYTES(10000), (u8 *)AppMemory->TransientStorage + TextArena->Size);
   
-  //RenderCmdPushRect(RenderBuffer, V3f(0.0, 0.0, 0.0f), V3f(4000.0f, 4000.0f, 1.0f), V3f(1.0f, 1.0f, 0.0f));
-  str8 MsPerFrameLabel = Str8FormatFromArena(&TextArena, "MSPerFrame: %.2f \n", AppState->DeltaTimeMS);
-  str8 LongestFrameLabel = Str8FormatFromArena(&TextArena, "longestFrame: %.2f \n", AppState->LongestFrameTime);
-  DrawSomeText(RenderBuffer, MsPerFrameLabel, 40, V3f(40.0f, 600.0f, 0.0f));
-  DrawSomeText(RenderBuffer, LongestFrameLabel, 40, V3f(40.0f, 552.0f, 0.0f));
+  //RenderCmdPushQuad(RenderBuffer, V3f(0.0, 0.0, 0.0f), V3f(4000.0f, 4000.0f, 1.0f), V3f(1.0f, 1.0f, 0.0f));
+  str8 MsPerFrameLabel = Str8FormatFromArena(TextArena, "MSPerFrame: %.2f \n", AppState->DeltaTimeMS);
+  str8 LongestFrameLabel = Str8FormatFromArena(TextArena, "longestFrame: %.2f \n", AppState->LongestFrameTime);
+  DrawSomeText(RenderBuffer, MsPerFrameLabel, 40, V3f(40.0f, 600.0f, 0.0f), V4f(0.0f,1.0f,1.0f,1.0f));
+  DrawSomeText(RenderBuffer, LongestFrameLabel, 40, V3f(40.0f, 552.0f, 0.0f), V4f(1.0f,0.0f,1.0f,1.0f));
+  
   
   f32 TurnFraction= GOLDEN_RATIO32;
   f32 StartX = (4.0*-1.0)-0.5;
   f32 StartY = (4.0*1.0)+0.5;
   u32 NumPoints = 300;
-  point_cluster Cluster = PointClusterInit(&LineArena, RenderBuffer);
+  point_cluster Cluster = PointClusterInit(LineArena, RenderBuffer);
   for(u32 PointIndex = 0; PointIndex < NumPoints; PointIndex++)
   {
     // TODO(MIGUEL): Debug the point that is missing and hanging out at the origin.
@@ -512,6 +656,7 @@ extern "C" SIM_UPDATE(Update)
             if(R2fIsInside(TestEntityBounds, EntityPos))
             {
               Entity->Exists = false;
+              AppState->DeadEntityCount++;
               goto ProcessNextEntity;
             }
             
@@ -525,11 +670,11 @@ extern "C" SIM_UPDATE(Update)
             {
               f32 WeirdOffset = 00.0f;
               v3f EToTEDelta = V3f(EntityPos.x, EntityPos.y, 0.5);
-              DrawVector(RenderBuffer,Entity->Pos + WeirdOffset, -1.0f * EToTEDelta, &LineArena);
+              DrawVector(RenderBuffer,Entity->Pos + WeirdOffset, -1.0f * EToTEDelta, LineArena);
               r2f MTB = {0};
               MTB.min = MinkowskiTestEntityBounds.min + WeirdOffset;
               MTB.max = MinkowskiTestEntityBounds.max + WeirdOffset;
-              DrawPerimeter(RenderBuffer, TestEntity->Pos, MTB, &LineArena);
+              DrawPerimeter(RenderBuffer, TestEntity->Pos, MTB, LineArena);
             }
             v3f WallNormal = { 0 };
             
@@ -643,15 +788,77 @@ extern "C" SIM_UPDATE(Update)
                Entity->Dim.y == 1.0f);
       }
       
-      DrawAABB(RenderBuffer, Entity, &LineArena);
-      RenderCmdPushQuad(RenderBuffer, Entity->Pos,  Entity->Dim, Entity->Vel);
+      DrawAABB(RenderBuffer, Entity, LineArena);
+      DrawRect(RenderBuffer, Entity->Pos,  Entity->Dim, Entity->Vel, V4f(0.0f, 0.7f,1.0f,1.0f));
     }
     
   }
   
-  u64 EndCycle = __rdtsc();
-  u64 CycleDelta = EndCycle-StartCycle;
-  str8 CycleLabel = Str8FormatFromArena(&TextArena, "Update Cycle: %.2I64d cycles\n", CycleDelta);
-  DrawSomeText(RenderBuffer, CycleLabel, 40, V3f(40.0f, 700.0f, 0.0f));
+  DrawRect(RenderBuffer, R2f(-2.0f, -2.0f, 2.0f, 2.0f), V3f(1.0f,0.0f,0.0f), V4f(1.0f,0.0f,0.0f,1.0f));
+  f32 h = 50;
+  f32 w = 200;
+  f32 left = 10.0f;
+  f32 yhigh = AppState->WindowDim.y;
+  f32 ylow = yhigh - h; 
+  UIButton(RenderBuffer, (u8 *)"My Button", R2f(left, ylow, left+w, yhigh));
+  ylow -= h; 
+  yhigh -= h; 
+  UIButton(RenderBuffer, (u8 *)"My New Button", R2f(left, ylow, left+w, yhigh));
+  yhigh -= h; 
+  ylow -= h; 
+  UIButton(RenderBuffer, (u8 *)"My Third Button", R2f(left, ylow, left+w, yhigh));
+  
+  w = 300.0;
+  left = 400.0;
+  yhigh = AppState->WindowDim.y;
+  ylow = yhigh - h; 
+  ui_layout UILayout = UILayoutInit(R2f(left, ylow, left+w, yhigh), V2f(0.0, h), V4f(0.3,0.0,0.4,1.0 ));
+  UIButton(RenderBuffer, &UILayout, (u8 *)"Easy button");
+  UIButton(RenderBuffer, &UILayout, (u8 *)"Easy button 0");
+  UIButton(RenderBuffer, &UILayout, (u8 *)"Easy button 1");
+  UIButton(RenderBuffer, &UILayout, (u8 *)"Easy button 2");
+  w = 40.0;
+  left = 0.0;
+  yhigh = AppState->WindowDim.y - 200.0f;
+  ylow = yhigh - h; 
+  UIStateInit(RenderBuffer);
+  ui_layout NewUILayout = UILayoutInit(R2f(left, ylow, left+w, yhigh), V2f(0.0, h), V4f(0.6,1.0,0.8,1.0));
+  UILayoutSelect(&NewUILayout);
+  UIButton((u8 *)"A");
+  UIButton((u8 *)"B");
+  UIButton((u8 *)"C");
+  UIButton((u8 *)"D");
+  UIButton((u8 *)"3");
+  w = 200.0;
+  h = 200.0;
+  left = AppState->WindowDim.x/2.0f;
+  yhigh = AppState->WindowDim.y/2.0f;
+  ylow = yhigh - h; 
+  ui_layout StackLayout = UILayoutInit(R2f(left, ylow, left+w, yhigh), V2f(0.0, h), V4f(0.6,1.0,0.8,1.0));
+  UILayoutPush(StackLayout);
+  UIButton((u8 *)"A");
+  ui_layout StackSubLayout = UILayoutInit(R2f(0.0f, 0.0f, 10.f, 10.f), V2f(0.0, 20.), V4f(1.0,0.0,0.0,1.0));
+  UILayoutPush(StackSubLayout);
+  UIButton((u8 *)"B");
+  UIButton((u8 *)"c");
+  
+  //END_TIMED_BLOCK(Update);
+#if 0
+  str8 EntityCountLabel = Str8FormatFromArena(TextArena, "Entity Count: %d\n",
+                                              AppState->EntityCount-AppState->DeadEntityCount);
+  DrawSomeText(RenderBuffer, EntityCountLabel, 20.f, V3f(10.f, 760.0f, 0.5f));
+  str8 UpdateCycleLabel = Str8FormatFromArena(TextArena, "Update Cycle Count: %I64d cycles | Hits: %d hits\n",
+                                              AppState->Counter[DBG_CycleCounter_Update].CycleCount,
+                                              AppState->Counter[DBG_CycleCounter_Update].HitCount);
+  DrawSomeText(RenderBuffer, UpdateCycleLabel, 20.f, V3f(10.f, 700.0f, 0.5f));
+  str8 RendererCycleLabel = Str8FormatFromArena(TextArena, "Renderer Cycle Count: %I64d cycles | Hits: %d hits\n",
+                                                AppState->Counter[DBG_CycleCounter_Render].CycleCount,
+                                                AppState->Counter[DBG_CycleCounter_Render].HitCount);
+  AppState->Counter[DBG_CycleCounter_Update].CycleCount = 0;
+  AppState->Counter[DBG_CycleCounter_Update].HitCount = 0;
+  AppState->Counter[DBG_CycleCounter_Render].CycleCount = 0;
+  AppState->Counter[DBG_CycleCounter_Render].HitCount = 0;
+  DrawSomeText(RenderBuffer, RendererCycleLabel, 20.f, V3f(10.f, 640.0f, 0.5f));
+#endif
   return;
 }

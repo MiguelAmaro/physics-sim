@@ -483,7 +483,7 @@ void operator -=(v3f &A, v3f B)
 
 v3f operator -(v3f &A)
 {
-  v3f Result = { 0 };
+  v3f Result = {0};
   
   Result.x = -A.x;
   Result.y = -A.y;
@@ -494,7 +494,7 @@ v3f operator -(v3f &A)
 
 v3f operator -(v3f a, v3f b)
 {
-  v3f Result = { 0 };
+  v3f Result = {0};
   
   Result.x = a.x-b.x;
   Result.y = a.y-b.y;
@@ -592,6 +592,16 @@ v4f V4f(f32 x, f32 y, f32 z, f32 w)
 }
 
 //- RECTANGLE 2D 
+r2f R2f(f32 minx, f32 miny, f32 maxx, f32 maxy)
+{
+  r2f Result = {0};
+  Result.min.x = minx;
+  Result.min.y = miny;
+  Result.max.x = maxx;
+  Result.max.y = maxy;
+  
+  return Result;
+}
 
 b32 R2fIsOutside(r2f Bounds, v2f Pos)
 {

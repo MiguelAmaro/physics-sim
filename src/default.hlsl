@@ -100,7 +100,8 @@ float4 PS_Main(PSInput Frag) : SV_TARGET
   else
   {
     //Color = lerp(float4(.10, .122,.18,1.), float4(v.x+v.y, v.x+v.y, v.x+v.y, 1.), 0.5f);
-    Color = float4(1., 1., .0, 1.);
+    Color = float4(0., 1., .0, 1.);
+    Color = UColor;
   }
   Color.w = 0.0f;
   return Color;

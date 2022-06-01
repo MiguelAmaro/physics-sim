@@ -40,4 +40,7 @@ typedef  uint64_t b64;
 typedef float f32;
 typedef double f64;
 
+//#define F32MAX UINT32_MAX
+#define U32MAX UINT32_MAX
+
 #endif //PHYSICS_SIM_TYPES_H

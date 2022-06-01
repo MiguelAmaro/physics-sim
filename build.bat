@@ -24,6 +24,7 @@ set MSVC_WARNINGS=^
 -wd4201 ^
 -wd4100 ^
 -wd4191 ^
+-wd5246 ^
 -wd4061
 
 set MSVC_FLAGS= ^
@@ -53,6 +54,7 @@ opengl32.lib ^
 kernel32.lib ^
 gdi32.lib ^
 d3d11.lib ^
+dxgi.lib ^
 d3dcompiler.lib ^
 dinput8.lib ^
 dxguid.lib ^
@@ -61,6 +63,8 @@ ws2_32.lib ^
 %PROJECT_DIR%"\thirdparty\freetype2\release dll\win64\freetype.lib"
 
 set MSVC_LINK_FLAGS= ^
+-map ^
+/MAPINFO:EXPORTS ^
 -nodefaultlib ^
 -subsystem:windows ^
 -stack:0x100000,0x100000
@@ -101,7 +105,7 @@ rem  DLL
 echo ============================================================
 pushd build
 
-del *.pdb > NUL 2> NUL
+del %PROJECT_NAME%_blah.pdb > NUL 2> NUL
 rem echo WAITING FOR PDB > lock.tmp
 
 cl ^
@@ -112,7 +116,9 @@ cl ^
 -DLL ^
 -LD ^
 /link ^
--PDB:%PROJECT_NAME%_%random%.pdb ^
+-map ^
+/MAPINFO:EXPORTS ^
+-PDB:%PROJECT_NAME%_blah.pdb ^
 -EXPORT:Update
 
 rem del lock.tmp

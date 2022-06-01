@@ -2,6 +2,7 @@
 #define PHYSICS_SIM_RENDERER
 
 #include <d3d11.h>
+#include <dxgi1_2.h>
 #include "physics_sim_math.h"
 #include "physics_sim_types.h"
 
@@ -111,6 +112,7 @@ struct render_entry
   v3f Pos;
   v3f Dim;
   
+  // TODO(MIGUEL): Make this into a union
   u8 Data[RENDER_ENTRY_DATASEG_SIZE];
 };
 
@@ -128,7 +130,7 @@ struct renderer
 {
   ID3D11Device           *Device;
   ID3D11DeviceContext    *Context;
-  IDXGISwapChain         *SwapChain;
+  IDXGISwapChain1        *SwapChain;
   D3D_FEATURE_LEVEL       FeatureLevel;
   ID3D11RasterizerState  *Rasterizer;
   ID3D11RenderTargetView *RenderTargetView;
@@ -278,7 +280,7 @@ void RenderCmdPushLine(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f *Point
   return;
 }
 
-void RenderCmdPushQuad(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin)
+void RenderCmdPushQuad(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin, b32 IsUI, v4f Color)
 {
   if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
   {
@@ -286,7 +288,7 @@ void RenderCmdPushQuad(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin
     
     MemorySet(0, Entry, sizeof(render_entry));
     
-    render_entry  RenderEntry;
+    render_entry  RenderEntry = {0};
     RenderEntry.Type  = RenderType_quad;
     RenderEntry.Pos   = Pos;
     RenderEntry.Dim   = Dim;
@@ -294,8 +296,11 @@ void RenderCmdPushQuad(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin
     u8 *RenderData = RenderEntry.Data;
     size_t RenderDataSizeRemaining = RENDER_ENTRY_DATASEG_SIZE;
     RenderCmdPushDataElm(&RenderData, &RenderDataSizeRemaining,
+                         &Color, sizeof(Color));
+    RenderCmdPushDataElm(&RenderData, &RenderDataSizeRemaining,
                          &CosSin, sizeof(CosSin));
-    
+    RenderCmdPushDataElm(&RenderData, &RenderDataSizeRemaining,
+                         &IsUI, sizeof(IsUI));
     *Entry = RenderEntry;
   }
   

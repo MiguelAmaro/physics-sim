@@ -3,69 +3,70 @@ version(2);
 project_name =  "Physics Sim";
 
 patterns = {
-    "*.cpp",
-    "*.h",
-    "*.hlsl",
-    "*.sh",
-    "*.bat",
-    "*.4coder",
+  "*.cpp",
+  "*.h",
+  "*.hlsl",
+  "*.sh",
+  "*.bat",
+  "*.4coder",
 };
 
 blacklist_patterns =
 {
-    ".*",
+  ".*",
 };
 
 load_paths = 
 {
-    .win = 
-    { 
-        { .path =   ".", .recursive = false, .relative = true },
-        { .path = "src", .recursive =  true, .relative = true },
-    },
+  .win = 
+  { 
+    { .path =   ".", .recursive = false, .relative = true },
+    { .path = "src", .recursive =  true, .relative = true },
+    { .path = "C:\\Program Files (x86)\Windows Kits\\10\\include\\10.0.22000.0\\shared", .recursive =  false, .relative = false },
+  },
 	
 };
 
 commands =
 {
-    .build_exe =
-    {
+  .build_exe =
+  {
 		.win              = "build.bat -exe",
-        .out              = "*compilation*",
+    .out              = "*compilation*",
 		.footer_panel     = true, 
 		.save_dirty_files = true, 
 		.cursor_at_end    = false,
 	},
-    
-    .build_dll =
-    {
+  
+  .build_dll =
+  {
 		.win              = "build.bat -dll",
-        .out              = "*compilation*",
+    .out              = "*compilation*",
 		.footer_panel     = true, 
 		.save_dirty_files = true, 
 		.cursor_at_end    = false,
 	},
-    
-    .run =
-    {
+  
+  .run =
+  {
 		.win              = "run.bat",
 		.footer_panel     = false, 
 		.save_dirty_files = true, 
 		.cursor_at_end    = false,
 	},
-    
-    .debug =
-    {
-        .win              = "debug.bat -rdbg",
-        .footer_panel     = false, 
+  
+  .debug =
+  {
+    .win              = "debug.bat -rdbg",
+    .footer_panel     = false, 
 		.save_dirty_files = false, 
 		.cursor_at_end    = false,
 	},
-    
-    .renderdoc =
-    {
-        .win              = "debug.bat -rdoc",
-        .footer_panel     = false, 
+  
+  .renderdoc =
+  {
+    .win              = "debug.bat -rdoc",
+    .footer_panel     = false, 
 		.save_dirty_files = false, 
 		.cursor_at_end    = false,
 	},
@@ -73,10 +74,10 @@ commands =
 
 fkey_command = 
 {
-    .F1  = "build_exe",
-    .F2  = "build_dll",
-    
-    .F12 = "run",
-    .F11 = "debug",
-    .F10 = "renderdoc"
+  .F1  = "build_exe",
+  .F2  = "build_dll",
+  
+  .F12 = "run",
+  .F11 = "debug",
+  .F10 = "renderdoc"
 };

@@ -44,6 +44,29 @@ struct memory_arena
 
 
 str8
+Str8(u8 *String, u64 Length)
+{
+  str8 Result = {0};
+  Result.Data = String;
+  Result.Length = Length;
+  return Result;
+}
+
+u32 CStrGetSize(u8 *String, b32 IncludeNull)
+{
+  u32 Result = 0;
+  while(String[Result] && Result<U32MAX) { Result++; }
+  Result += IncludeNull?1:0;
+  return Result;
+}
+
+str8 Str8FromCStr(u8 *String)
+{
+  str8 Result = Str8(String, CStrGetSize(String, 0));
+  return Result;
+}
+
+str8
 Str8FormatFromArena(memory_arena *Arena, char const * Format, ...)
 {
   str8 Result = {0};

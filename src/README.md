@@ -78,3 +78,24 @@ I dont want glyhs to be loaded every frame.
 I want the Ansi range of charters for now.
 I want full control over font loading from the dll.
 I don't duplicate bitmaps for chars.
+
+**NOTE(MIGUEL): (05/02/2022)**
+
+Enough of the text layout is done. Now ill focus on other stuff and let any flaws expose themselves and 
+fix accordinglly. I have choice between implementing quad trees, a camera system, or whatever. Ill work on
+some elementary debug services and UI using hamdmade hero.
+
+
+**NOTE(MIGUEL): (05/07/2022)**
+
+Found the source of a pretty obvious (but not really crash) caused by macros that im useing for counting cycles
+taken by blocks of code. I have a global defined in a dll header with the static keyword. It just holds a pointer 
+to appstate but that pointer gets initialized  in the dll which may not even load. lol However my main concern is if
+it actually global... The dll is compiled as a seperate unit meant to be linked at run time. When the executable links it
+need to fetch pointers to funcitons to be able to use them. That is the only way. Functions are extern by default yet you still
+have to go throug that process. So it's kind of dumb to expect that declaring a variable as extern is going to magically make
+some memory address that is shared between the dll and the exe. Also Declaring a variable that (extern or not) in a header that 
+is viewed by both the exe src and dll src will just result in both the dll and exe haveing their own respective versions of 
+that variable. Therefore i can assign the appstate ptr some memory in a dll function but exe wont know because it has it's own
+appstate ptr which is completely seperate and still null. hence the crash.
+

@@ -1,13 +1,10 @@
 // ConsoleApplication1.cpp : Defines the entry point for the console application.
-
 #define WIN32_LEAN_AND_MEAN
-
 #include <windows.h>
-#include <stdint.h>
-
-
+#include <d3d11.h>
+#include <dxgi1_2.h>
 #include <d3dcompiler.h>
-#include <directxmath.h>
+
 #include <timeapi.h>
 
 #include "physics_sim_config.h"
@@ -50,25 +47,11 @@ struct win32_state
   char *OnePastLastExeFileNameSlash;
 };
 
-
-struct button_state
-{
-  b32 EndedDown;
-  u32 HalfTransitionCount;
-};
-
-struct app_input
-{
-  button_state ConnectArduino; 
-  button_state SpawnGraph;
-};
-
 struct win32_WindowDim
 {
   u32 Width;
   u32 Height;
 };
-
 
 struct buffer
 {
@@ -88,6 +71,7 @@ b32             g_WindowResized;
 uint32_t g_Running = true;
 b32 gPause     = false;
 b32 gFrameStep = false;
+
 //-/ FUNCTIONS
 static u32
 S8Length(const char *String)
@@ -124,6 +108,16 @@ FindLeastSignificantSetBit(u32 Value)
   return Result;
 }
 
+void InitInput(app_input *Input)
+{
+  MemorySet(0, Input->AlphaKeys, sizeof(Input->AlphaKeys));
+  MemorySet(0, Input->NavKeys, sizeof(Input->NavKeys));
+  POINT CursorPos;
+  GetCursorPos(&CursorPos);
+  Input->Mouse.x = (f32)CursorPos.x;
+  Input->Mouse.y = (f32)CursorPos.y;
+  return;
+}
 
 static bitmapdata
 LoadBitmap(const char *FileName)
@@ -273,43 +267,55 @@ D3D11Startup(HWND Window, renderer *Renderer)
   HRESULT Status;
   b32     Result = true;
   
+  D3D_FEATURE_LEVEL Levels[] = {D3D_FEATURE_LEVEL_11_0};
   UINT Flags = (D3D11_CREATE_DEVICE_BGRA_SUPPORT   |
                 D3D11_CREATE_DEVICE_SINGLETHREADED |
                 D3D11_CREATE_DEVICE_DEBUG);
-  
-  D3D_FEATURE_LEVEL Levels[] = {D3D_FEATURE_LEVEL_11_0};
-  
-#if 0
   // NOTE(MIGUEL): For if I want to ceate the device and swapchain seperately.
-  Status = D3D11CreateDevice(0,
-                             D3D_DRIVER_TYPE_HARDWARE,
-                             0,
-                             Flags,
-                             Levels,
-                             ARRAYSIZE(Levels),
-                             D3D11_SDK_VERSION,
-                             &AppState->Device, 0, &AppState->Context);
+  Status = D3D11CreateDevice(0, D3D_DRIVER_TYPE_HARDWARE, 0, Flags, Levels,
+                             ARRAYSIZE(Levels), D3D11_SDK_VERSION,
+                             &Renderer->Device, 0, &Renderer->Context);
   
-  ASSERT(SUCCEEDED(Status));
-#endif
+  Assert(SUCCEEDED(Status));
   
   // NOTE(MIGUEL): The swapchain BufferCount needs to be 2 to get
   //               2 backbuffers. Change it to 1 to see the effects.
   
-  DXGI_SWAP_CHAIN_DESC SwapChainDescription = {0};
+  DXGI_SWAP_CHAIN_DESC1 SwapChainDescription = {0};
   SwapChainDescription.BufferCount = 2; 
-  SwapChainDescription.BufferDesc.Width  = g_WindowDim.Width;
-  SwapChainDescription.BufferDesc.Height = g_WindowDim.Height;
-  SwapChainDescription.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-  SwapChainDescription.BufferDesc.RefreshRate.Numerator   = 60;
-  SwapChainDescription.BufferDesc.RefreshRate.Denominator = 1;
+  SwapChainDescription.Width  = g_WindowDim.Width;
+  SwapChainDescription.Height = g_WindowDim.Height;
+  SwapChainDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
   SwapChainDescription.BufferUsage        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-  SwapChainDescription.OutputWindow       = Window;
-  SwapChainDescription.Windowed           = true;
+  SwapChainDescription.Scaling            = DXGI_SCALING_NONE;
   SwapChainDescription.SwapEffect         = DXGI_SWAP_EFFECT_FLIP_DISCARD;
   SwapChainDescription.SampleDesc.Count   = 1;
   SwapChainDescription.SampleDesc.Quality = 0;
   
+  Assert(SUCCEEDED(Status));
+  {
+    IDXGIFactory2* Factory;
+    Status = CreateDXGIFactory(IID_IDXGIFactory2, (void **)&Factory);
+    Assert(SUCCEEDED(Status));
+    Status = Factory->CreateSwapChainForHwnd((IUnknown*)Renderer->Device, Window,
+                                             &SwapChainDescription, NULL, NULL, &Renderer->SwapChain);
+    Assert(SUCCEEDED(Status));
+    Factory->Release();
+  }
+  {
+    IDXGIFactory* Factory;
+    Renderer->SwapChain->GetParent(IID_IDXGIFactory, (void **)&Factory);
+    Factory->MakeWindowAssociation(Window, DXGI_MWA_NO_ALT_ENTER);
+    Factory->Release();
+  }
+  ID3D11InfoQueue* Info;
+  Renderer->Device->QueryInterface(IID_ID3D11InfoQueue, (void **)&Info);
+  Info->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+  Info->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR, TRUE);
+  Info->Release();
+  
+  
+#if 0
   Status = D3D11CreateDeviceAndSwapChain(0, // NOTE(MIGUEL): Get default video adapter
                                          D3D_DRIVER_TYPE_HARDWARE,
                                          0, // NOTE(MIGUEL): Handle to the dll containing the software render if one is used
@@ -320,8 +326,7 @@ D3D11Startup(HWND Window, renderer *Renderer)
                                          &Renderer->SwapChain,
                                          &Renderer->Device,
                                          &Renderer->FeatureLevel, &Renderer->Context );
-  
-  Assert(SUCCEEDED(Status));
+#endif
   
   
   ID3D11Texture2D        *BackBufferTexture;
@@ -646,22 +651,40 @@ ProcessPendingMessages(app_input *Input)
       } break;
       */
       case WM_SYSKEYUP:
-      
       case WM_SYSKEYDOWN:
-      
       case WM_KEYDOWN:
-      
       case WM_KEYUP:
       {
-        uint32_t VKCode          = (uint32_t)Message.wParam;
-        uint32_t WasDown         = ((Message.lParam & (1 << 30)) != 0);
-        uint32_t IsDown          = ((Message.lParam & (1 << 31)) == 0);
+        u32 VKCode          = (u32)Message.wParam;
+        u32 KeyWasDown      = ((Message.lParam & (1 << 30)) != 0);
+        u32 KeyIsDown       = ((Message.lParam & (1 << 31)) == 0);
+        u32 KeyIndex = 0;
         
-        if(WasDown != IsDown)
+        if(KeyWasDown != KeyIsDown)
+        {
+          if(VKCode >= 'A' && VKCode <= 'Z')
+          { 
+            KeyIndex = Key_a + (VKCode - 'A');
+            ProcessKeyboardMessage(&Input->AlphaKeys[KeyIndex], KeyIsDown);
+          }
+          
+          switch(VKCode)
+          {
+            case VK_UP    : ProcessKeyboardMessage(&Input->NavKeys[0], KeyIsDown); break;
+            case VK_LEFT  : ProcessKeyboardMessage(&Input->NavKeys[1], KeyIsDown); break;
+            case VK_DOWN  : ProcessKeyboardMessage(&Input->NavKeys[2], KeyIsDown); break;
+            case VK_RIGHT : ProcessKeyboardMessage(&Input->NavKeys[3], KeyIsDown); break;
+            case VK_ESCAPE: ProcessKeyboardMessage(&Input->NavKeys[4], KeyIsDown); break;
+            case VK_SPACE : ProcessKeyboardMessage(&Input->NavKeys[5], KeyIsDown); break;
+            //case VK_F4    : g_Platform.QuitApp = KeyAltWasDown ? 1 : 0; break;
+          }
+        }
+        
+        // TODO(MIGUEL): Remove This and handle else where 
+        if(KeyWasDown != KeyIsDown)
         {
           switch(VKCode)
           {
-            
             case VK_UP:
             {
             } break;
@@ -689,12 +712,12 @@ ProcessPendingMessages(app_input *Input)
             
           }
           
-          if((VKCode == 'P') && (IsDown))
+          if((VKCode == 'P') && (KeyIsDown))
           {
             gPause= !gPause;
           }
           
-          if(IsDown)
+          if(KeyIsDown)
           {
             
             u32 AltKeyWasDown = ( Message.lParam & (1 << 29));
@@ -865,6 +888,19 @@ void RenderPoints(renderer *Renderer,
   return;
 }
 
+
+void DebugClearTimers()
+{
+  // NOTE(MIGUEL): print out from here??? maybe???
+  
+  for(u32 Timer=0; Timer<DBG_CycleCounter_Count; Timer++)
+  {
+    MemorySet(0, &GlobalDebugState[Timer], sizeof(GlobalDebugState[Timer]));
+  }
+  
+  return;
+}
+
 void DrawLine(renderer *Renderer,
               app_state *AppState,
               f32 LineWidth,
@@ -996,7 +1032,8 @@ void
 Render(renderer *Renderer, app_memory *AppMemory)
 {
   app_state *AppState = (app_state *)AppMemory->PermanentStorage;
-  
+  GlobalDebugState = AppState;
+  BEGIN_TIMED_BLOCK(Render);
   
   if(Renderer->Context)
   {
@@ -1073,12 +1110,16 @@ Render(renderer *Renderer, app_memory *AppMemory)
 #if 1
           u8 *RenderData = (u8 *)RenderEntry->Data;
           size_t BytesExtracted = 0;
+          v4f Color = {0};
           v3f CosSin = {0};
           b32 IsText = {0};
+          b32 IsUI = 0;
           bitmapdata BitmapData = {0};
           // NOTE(MIGUEL): !!!CRITICAL!!!!This is very sensitive code. The order in which you 
           //               pop elements matters. Changing order will produce garbage data.
+          RenderCmdPopDataElm(&RenderData, &BytesExtracted, &Color, sizeof(Color));
           RenderCmdPopDataElm(&RenderData, &BytesExtracted, &CosSin, sizeof(CosSin));
+          RenderCmdPopDataElm(&RenderData, &BytesExtracted, &IsUI  , sizeof(IsUI));
           RenderCmdPopDataElm(&RenderData, &BytesExtracted, &IsText, sizeof(IsText));
           RenderCmdPopDataElm(&RenderData, &BytesExtracted, &BitmapData, sizeof(BitmapData));
           b32 IsTextured = 0;
@@ -1119,13 +1160,20 @@ Render(renderer *Renderer, app_memory *AppMemory)
             //               that disallows me the use the V3f() initializer. investigate it
             // TODO(MIGUEL): Wall verts get compressed to a point for some reason. Thats why 
             //               Wall quads arent visable. Fix it.
-            v3f PixelSpacePos = RenderEntry->Pos;
-            PixelSpacePos *= AppState->MeterToPixels;
-            PixelSpacePos.x+=WierdOffset;
-            PixelSpacePos.y+=WierdOffset;
-            v3f PixelSpaceDim = V3f(RenderEntry->Dim.x*AppState->MeterToPixels,
-                                    RenderEntry->Dim.y*AppState->MeterToPixels,
-                                    RenderEntry->Dim.z*AppState->MeterToPixels);
+            v3f PixelSpacePos = RenderEntry->Pos*AppState->MeterToPixels;
+            v3f PixelSpaceDim = RenderEntry->Dim*AppState->MeterToPixels;
+            if(IsUI)
+            {
+              PixelSpacePos = RenderEntry->Pos;
+              PixelSpaceDim = RenderEntry->Dim;
+            }
+            else
+            {
+              PixelSpacePos.x+=WierdOffset;
+              PixelSpacePos.y+=WierdOffset;
+            }
+            
+            
             Renderer->ConstBufferHigh.PixelPos  = PixelSpacePos;
             // NOTE(MIGUEL): High Update Frequency
             m4f Trans  = M4fTranslate(PixelSpacePos);
@@ -1152,6 +1200,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
           Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
           
           Renderer->ConstBufferHigh.Time   = (f32)AppState->Time;
+          Renderer->ConstBufferHigh.Color   = Color;
           Renderer->ConstBufferHigh.World  = World;
           Renderer->ConstBufferHigh.IsTextured  = IsTextured;
           
@@ -1225,6 +1274,12 @@ Render(renderer *Renderer, app_memory *AppMemory)
 #endif
     //~/FLIP
     Renderer->SwapChain->Present(0 , 0);
+  }
+  
+  if(GlobalDebugState)
+  {
+    END_TIMED_BLOCK(Render);
+    
   }
   
   return;
@@ -2030,10 +2085,14 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   
   win32_sim_code SimCode = { 0 };
   
+  
+  // NOTE(MIGUEL): Fuck this is sloppy
+  app_state *AppState = (app_state *)AppMemory->PermanentStorage;
   while (g_Running)
   {
     // NOTE(MIGUEL): Start Timer
-    
+    AppState->WindowDim = V2f((f32)g_WindowDim.Width, (f32)g_WindowDim.Height);
+    InitInput(&Input);
     ProcessPendingMessages(&Input);
     
     RECT WindowDim;
@@ -2081,7 +2140,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
       
       if(SimCode.Update)
       {
-        SimCode.Update(AppMemory, &g_Renderer.RenderBuffer);
+        SimCode.Update(AppMemory, &Input, &g_Renderer.RenderBuffer);
       }
       Render(&g_Renderer, AppMemory);
       
@@ -2104,8 +2163,6 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
         MicrosElapsedIdle = (f64)IdleTickDelta*TicksToMicros;
       }
       
-      // NOTE(MIGUEL): Fuck this is sloppy
-      app_state *AppState = (app_state *)AppMemory->PermanentStorage;
       f64 FrameTimeMS = (MicrosElapsedWorking+MicrosElapsedIdle)/1000.0;
       if(FrameTimeMS>AppState->LongestFrameTime)
       {
