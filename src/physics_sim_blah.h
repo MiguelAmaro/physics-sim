@@ -110,19 +110,6 @@ enum axis2d
   Axis_Count,
 };
 
-// NOTE(MIGUEL): Layout is esentially ui_box
-struct ui_layout
-{
-  //f32 h = 50;
-  //f32 yhigh = AppState->WindowDim.y;
-  //f32 ylow = yhigh - h; 
-  v2f Offset;
-  //spacing???
-  v2f LastPos;
-  r2f Rect;
-  v4f Color;
-};
-
 enum ui_size_opt
 {
   UI_Size_Null,
@@ -137,14 +124,6 @@ struct ui_size
   ui_size_opt Option;
   f32 Value;
   f32 Strictness;
-};
-
-struct ui_state
-{
-  ui_layout LayoutStack[256];
-  u32 LayoutCount;
-  u32 LayoutMaxCount;
-  render_buffer *RenderBuffer;
 };
 
 enum ui_key
@@ -163,16 +142,6 @@ enum ui_flags
   UI_WidgetFlag_Clip            = (1<<6),
   UI_WidgetFlag_HotAnimation    = (1<<7),
   UI_WidgetFlag_ActiveAnimation = (1<<8),
-};
-
-enum ui_block_type
-{
-  UI_WidgetKind_Null,
-  UI_WidgetKind_Button,
-  UI_WidgetKind_Checkbox,
-  UI_WidgetKind_Slider,
-  // ...
-  UI_WidgetKind_COUNT
 };
 
 struct ui_block
@@ -202,7 +171,21 @@ struct ui_block
   f32 Active;
 };
 
-global ui_layout *ActiveUILayout;
+struct ui_state
+{
+  //Rendering 
+  render_buffer *RenderBuffer;
+  
+  //Parent ManagmentStack
+  ui_block ParentStack[256];
+  u32 ParentCount;
+  u32 ParentMaxCount;
+  ui_block *ActiveParent;
+  
+  ui_block *BlockRoot;
+  memory_arena Arena;
+};
+
 global ui_state   GlobalUIState;
 
 //
