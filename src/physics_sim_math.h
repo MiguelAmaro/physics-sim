@@ -102,11 +102,11 @@ f32 ArcTan2(f32 y, f32 x )
   /*
   const double a = x;
   const double b = y;
-  
+    
   __m128d SSEThing = _mm_atan2_pd(_mm_load_sd(&a), _mm_load_sd(&b));
-  
+    
   __m128 SSEOtherThing =  _mm_castpd_ps(SSEThing);
-  
+    
   _mm_store_ss(&Result, SSEOtherThing);
   */
 #if 0
@@ -286,16 +286,16 @@ union m2f
 union m3f32
 {
   v3f r[3];
-  f32   e[9];
-  f32   x[3][3];
+  f32 e[9];
+  f32 x[3][3];
 };
 
 
 union m4f
 {
   v4f r[4];
-  f32   e[16];
-  f32   x[4][4];
+  f32 e[16];
+  f32 x[4][4];
 };
 
 
@@ -594,6 +594,8 @@ v4f V4f(f32 x, f32 y, f32 z, f32 w)
 //- RECTANGLE 2D 
 r2f R2f(f32 minx, f32 miny, f32 maxx, f32 maxy)
 {
+  Assert(minx<=maxx);
+  Assert(miny<=maxy);
   r2f Result = {0};
   Result.min.x = minx;
   Result.min.y = miny;
@@ -653,6 +655,15 @@ r2f R2fAddRadiusTo(r2f Bounds, v2f Dim)
   return Result;
 }
 
+void R2fToDimPos(r2f *Rect, v2f *Dim, v2f *Pos)
+{
+  v2f Size = V2f((Rect->max.x - Rect->min.x)*0.5f,
+                 (Rect->max.y - Rect->min.y)*0.5f);
+  v2f Loc = Rect->min + (Size*0.5f);
+  *Dim = Size;
+  *Pos = Loc;
+  return;
+}
 
 //- MATRIX 2D 
 static void
@@ -736,6 +747,58 @@ m4f operator *(m4f A, m4f B)
   return Result;
 }
 
+m4f M4fMultiply(m4f *a, m4f *b, m4f *GetResult, b32 IsColumnMajor)
+{
+  m4f Result = { 0 };
+#if 0
+  for(u32 BColumn = 0; BColumn < 4; BColumn ++)
+  {
+    for(u32 ARow = 0; ARow < 4; ARow++)
+    {
+      v4f Entry = &Result.r[BColumn];
+      Entry
+        a
+        for(u32 ScanElement = 0; ScanElement < 4; ScanElement++)
+      { *Entry += a->r[ScanRow].c[ScanElement] * b->r[ScanElement].c[ScanCol]; }
+    }
+  }
+#else
+  __m128 res[4];
+  __m128 sum;
+  __m128 prod0, prod1, prod2, prod3;
+  __m128 ar0 = _mm_loadu_ps(a->r[0].c);
+  __m128 ar1 = _mm_loadu_ps(a->r[1].c);
+  __m128 ar2 = _mm_loadu_ps(a->r[2].c);
+  __m128 ar3 = _mm_loadu_ps(a->r[3].c);
+  // NOTE(MIGUEL):(Expected to be column major)
+  __m128 bc[4];
+  bc[0] = _mm_loadu_ps(b->r[0].c);
+  bc[1] = _mm_loadu_ps(b->r[1].c);
+  bc[2] = _mm_loadu_ps(b->r[2].c);
+  bc[3] = _mm_loadu_ps(b->r[3].c);
+  
+  for(u32 i=0;i<4;i++)
+  {
+    //DOTPRODUCT
+    prod0 = _mm_mul_ps (bc[i], ar0);
+    prod1 = _mm_mul_ps (bc[i], ar1);
+    prod2 = _mm_mul_ps (bc[i], ar2);
+    prod3 = _mm_mul_ps (bc[i], ar3);
+    _MM_TRANSPOSE4_PS(prod0, prod1, prod2, prod3);
+    sum = _mm_add_ps (prod0, prod1);
+    sum = _mm_add_ps (sum , prod2);
+    sum = _mm_add_ps (sum , prod3);
+    res[i] = sum;
+  }
+  _MM_TRANSPOSE4_PS(res[0], res[1], res[2], res[3]);
+  _mm_store_ps (Result.r[0].c, res[0]);
+  _mm_store_ps (Result.r[1].c, res[1]);
+  _mm_store_ps (Result.r[2].c, res[2]);
+  _mm_store_ps (Result.r[3].c, res[3]);
+#endif
+  if(GetResult) {*GetResult = Result; }
+  return Result;
+}
 
 b32 operator ==(m4f A, m4f B)
 {
@@ -748,6 +811,15 @@ b32 operator ==(m4f A, m4f B)
   return Result;
 }
 
+static m4f M4f(v4f r0, v4f r1, v4f r2, v4f r3)
+{
+  m4f Result = {0};
+  Result.r[0] = r0;
+  Result.r[1] = r1;
+  Result.r[2] = r2;
+  Result.r[3] = r3;
+  return Result;
+}
 
 static m4f
 M4fIdentity(void)

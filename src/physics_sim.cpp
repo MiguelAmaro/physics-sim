@@ -108,14 +108,15 @@ FindLeastSignificantSetBit(u32 Value)
   return Result;
 }
 
-void InitInput(app_input *Input)
+void InitInput(app_input *Input, HWND Window)
 {
   MemorySet(0, Input->AlphaKeys, sizeof(Input->AlphaKeys));
   MemorySet(0, Input->NavKeys, sizeof(Input->NavKeys));
   POINT CursorPos;
   GetCursorPos(&CursorPos);
-  Input->Mouse.x = (f32)CursorPos.x;
-  Input->Mouse.y = (f32)CursorPos.y;
+  ScreenToClient(Window, &CursorPos);
+  Input->MousePos.x = (f32)CursorPos.x;
+  Input->MousePos.y = (f32)CursorPos.y;
   return;
 }
 
@@ -2092,7 +2093,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   {
     // NOTE(MIGUEL): Start Timer
     AppState->WindowDim = V2f((f32)g_WindowDim.Width, (f32)g_WindowDim.Height);
-    InitInput(&Input);
+    InitInput(&Input, Window);
     ProcessPendingMessages(&Input);
     
     RECT WindowDim;
@@ -2182,9 +2183,6 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
 
 void WinMainCRTStartup()
 {
-  //TestMath();
-  //return;
-  
   HWND Window = CreateOutputWindow();
   
   app_memory AppMemory = { 0 };
@@ -2240,6 +2238,7 @@ void *memset(void *DestInit, int Source, size_t Size)
   
   return DestInit;
 }
+
 #pragma function(memcpy)
 void *memcpy(void *DestInit, void const *SourceInit, size_t Size)
 {
@@ -2258,4 +2257,3 @@ void _wassert(wchar_t const* message,
 {
   return;
 }
-

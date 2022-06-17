@@ -9,8 +9,6 @@
 #include "physics_sim_renderer.h"
 
 
-#define TEST 1
-
 
 enum key_type
 {
@@ -37,7 +35,7 @@ struct app_input
   button_state NavKeys[Key_MAX]; // NOTE(MIGUEL): Space for extra keys
   button_state ConnectArduino; 
   button_state SpawnGraph;
-  v2f Mouse; // NOTE(MIGUEL): What are the downsides to handleing screen coords with floatingpoint
+  v2f MousePos; // NOTE(MIGUEL): What are the downsides to handleing screen coords with floatingpoint
 };
 
 enum entity_type
@@ -131,25 +129,31 @@ enum ui_key
   
 };
 
+struct ui_input
+{
+  b32 Hover;
+  b32 Clicked;
+};
+
 enum ui_flags
 {
-  UI_WidgetFlag_Clickable       = (1<<0),
-  UI_WidgetFlag_ViewScroll      = (1<<1),
-  UI_WidgetFlag_DrawText        = (1<<2),
-  UI_WidgetFlag_DrawBorder      = (1<<3),
-  UI_WidgetFlag_DrawBackground  = (1<<4),
-  UI_WidgetFlag_DrawDropShadow  = (1<<5),
-  UI_WidgetFlag_Clip            = (1<<6),
-  UI_WidgetFlag_HotAnimation    = (1<<7),
-  UI_WidgetFlag_ActiveAnimation = (1<<8),
+  UI_BlockFlag_Clickable       = (1<<0),
+  UI_BlockFlag_ViewScroll      = (1<<1),
+  UI_BlockFlag_DrawText        = (1<<2),
+  UI_BlockFlag_DrawBorder      = (1<<3),
+  UI_BlockFlag_DrawBackground  = (1<<4),
+  UI_BlockFlag_DrawDropShadow  = (1<<5),
+  UI_BlockFlag_Clip            = (1<<6),
+  UI_BlockFlag_HotAnimation    = (1<<7),
+  UI_BlockFlag_ActiveAnimation = (1<<8),
 };
 
 struct ui_block
 {
-  ui_block *First;
-  ui_block *Last;
-  ui_block *Next;
-  ui_block *Prev;
+  ui_block *FirstChild;
+  ui_block *LastChild;
+  ui_block *NextSibling;
+  ui_block *PrevSibling;
   ui_block *Parent;
   //Hash Links
   ui_block *HashNext;
@@ -169,12 +173,16 @@ struct ui_block
   //Persistant
   f32 Hot;
   f32 Active;
+  
+  //Test
+  v4f Color;
 };
 
 struct ui_state
 {
   //Rendering 
   render_buffer *RenderBuffer;
+  v2f WindowDim;
   
   //Parent ManagmentStack
   ui_block ParentStack[256];
@@ -182,6 +190,7 @@ struct ui_state
   u32 ParentMaxCount;
   ui_block *ActiveParent;
   
+  app_input Input;
   ui_block *BlockRoot;
   memory_arena Arena;
 };
@@ -201,10 +210,10 @@ struct app_state
   f64 LongestFrameTime;
   f64 Time;
   
-  // NOTE(MIGUEL): Temp
+  // NOTE(MIGUEL): Temp/*
   v2f WindowDim;
   
-  
+  ui_block Hash[1049];
   memory_arena AssetArena;
   memory_arena TextArena ;
   memory_arena LineArena ;

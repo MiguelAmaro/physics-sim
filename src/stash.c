@@ -130,3 +130,108 @@
   UIButton((u8 *)"c");
   
 }
+{
+#if 0
+  b32 Success = 0;
+  
+  char  OutputBuffer[1024];
+  
+  wsprintf(OutputBuffer, "RUNNING MATH FUNCTION TESTS: \n");
+  //OutputDebugStringA(OutputBuffer);
+  
+  MemorySetTo(0, OutputBuffer, sizeof(OutputBuffer));
+  
+  // TODO(MIGUEL): TEST SIN
+  // TODO(MIGUEL): TEST COS
+  
+  f32 TestResult  = ArcTan(1.0f / 1.0f);
+  s32 PrintTestResult     = TestResult * 100;
+  s32 PrintExpectedResult = 0.785398f * 100;
+  Success = (TestResult == 0.785398f);
+  
+  wsprintf(OutputBuffer, "Test [Arctan(PI32 / 2.0f)] [%s]"
+           " RESULT: %d.2 | EXECTED: %d.2",
+           Success? "SUCCESS!": "FAILED!",
+           PrintTestResult,
+           PrintExpectedResult);
+  OutputDebugStringA(OutputBuffer);
+  MemorySetTo(0, OutputBuffer, sizeof(OutputBuffer));
+  
+  
+  render_entry  RenderEntry;
+  RenderEntry.Type  = RenderType_quad;
+  RenderEntry.Pos   = GlyphQuadPos;
+  RenderEntry.Dim   = GlyphQuadDim;
+  // TODO(MIGUEL): Add some checking
+  u8 *RenderData = RenderEntry.Data;
+  size_t RenderDataSize = RENDER_ENTRY_DATASEG_SIZE;
+  // NOTE(MIGUEL): !!!CRITICAL!!!!This is very sensitive code. The order in which you 
+  //               pop elements matters. Changing order will produce garbage data.
+  RenderCmdPushDataElm(&RenderData, &RenderDataSize, &CosSin, sizeof(CosSin));
+  ASSERT((RenderData-RenderEntry.Data)==sizeof(CosSin));
+  RenderCmdPushDataElm(&RenderData, &RenderDataSize, &IsText, sizeof(IsText));
+  ASSERT((RenderData-RenderEntry.Data)==(sizeof(CosSin)+sizeof(IsText)));
+  RenderCmdPushDataElm(&RenderData, &RenderDataSize, &BitmapData, sizeof(BitmapData));
+  ASSERT((RenderData-RenderEntry.Data)==(sizeof(CosSin)+sizeof(IsText))+sizeof(BitmapData) );
+  RenderData = (u8 *)&RenderEntry.Data;
+  v3f *PtrCosSin = (v3f *)(RenderData + 0);
+  b32 *PtrIsText = (b32 *)(RenderData + sizeof(v3f));
+  bitmapdata *PtrBitmapData = (bitmapdata *)(RenderData + sizeof(v3f) + sizeof(b32));
+  ASSERT(PtrCosSin->x == CosSin.x &&
+         PtrCosSin->y == CosSin.y &&
+         PtrCosSin->z == CosSin.z);
+  ASSERT(*PtrIsText == IsText);
+  ASSERT(PtrBitmapData->Width == BitmapData.Width &&
+         PtrBitmapData->Height == BitmapData.Height &&
+         PtrBitmapData->Pixels == BitmapData.Pixels &&
+         PtrBitmapData->BytesPerPixel == BitmapData.BytesPerPixel);
+  //ArcTan2();
+#endif
+}
+
+
+#include <wchar.h>
+void ViewM128(const char *Label, __m128 a)
+{
+  v4f Vector = {0};
+  _mm_store_ps (Vector.c, a);
+  wprintf(L"m128: [ %.4f %.4f %.4f %.4f ] : %hs\n",
+          Vector.x, Vector.y, Vector.z, Vector.w,
+          Label);
+  return;
+}
+void ViewData(void)
+{
+#if 0
+  ViewM128("Wierd Matrix Row[0]", bc0);
+  wprintf(L"(Times)\n");
+  ViewM128("Id", ar0);
+  ViewM128("Id", ar1);
+  ViewM128("Id", ar2);
+  ViewM128("Id", ar3);
+  wprintf(L"(Equals)\n");
+  ViewM128("WM*Id", prod0);
+  ViewM128("WM*Id", prod1);
+  ViewM128("WM*Id", prod2);
+  ViewM128("WM*Id", prod3);
+  wprintf(L"(Transposed)\n");
+  ViewM128("WM*Id", res0);
+  ViewM128("WM*Id", res1);
+  ViewM128("WM*Id", res2);
+  ViewM128("WM*Id", res3);
+  wprintf(L"\n\n");
+  //tests transpose
+  ViewM128("B columns", bc0);
+  ViewM128("B columns", bc1);
+  ViewM128("B columns", bc2);
+  ViewM128("B columns", bc3);
+  wprintf(L"(Transposed)\n");
+  _MM_TRANSPOSE4_PS(bc0, bc1, bc2, bc3);
+  ViewM128("B columns", bc0);
+  ViewM128("B columns", bc1);
+  ViewM128("B columns", bc2);
+  ViewM128("B columns", bc3);
+  
+#endif
+  return;
+}

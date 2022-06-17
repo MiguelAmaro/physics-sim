@@ -52,7 +52,7 @@ Str8(u8 *String, u64 Length)
   return Result;
 }
 
-u32 CStrGetSize(u8 *String, b32 IncludeNull)
+u32 CStrGetSize(const char *String, b32 IncludeNull)
 {
   u32 Result = 0;
   while(String[Result] && Result<U32MAX) { Result++; }
@@ -60,9 +60,19 @@ u32 CStrGetSize(u8 *String, b32 IncludeNull)
   return Result;
 }
 
-str8 Str8FromCStr(u8 *String)
+str8 Str8FromCStr(const char *String)
 {
-  str8 Result = Str8(String, CStrGetSize(String, 0));
+  str8 Result = Str8((u8 *)String, CStrGetSize(String, 0));
+  return Result;
+}
+
+static b32 Str8IsEqual(str8 a, str8 b)
+{
+  b32 Result = 1;
+  if(a.Length != b.Length) return 0;
+  u64 Index = a.Length;
+  while((Index>0) && (a.Data[Index-1]==b.Data[Index-1])) { Index--; }
+  Result = (Index==0);
   return Result;
 }
 
@@ -95,9 +105,7 @@ inline u32
 SafeTruncateu64(u64 Value)
 {
   Assert(Value <= 0xffffffff);
-  
   u32 Result = (u32)Value;
-  
   return Result;
 }
 
@@ -181,5 +189,15 @@ MemoryArenaZeroBlock(memory_index size, void *address)
   
   return;
 }
+
+b32 MemoryIsEqual(u8 *a, u8 *b, u64 MemorySize)
+{
+  b32 Result = 0;
+  u64 Index = MemorySize;
+  while((Index>0) && (a[Index-1]==b[Index-1])) { Index--; }
+  Result = (Index==0);
+  return Result;
+}
+
 
 #endif //PHYSICS_SIM_MEMORY_H

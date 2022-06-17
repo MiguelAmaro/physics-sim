@@ -22,7 +22,6 @@ load_paths =
   { 
     { .path =   ".", .recursive = false, .relative = true },
     { .path = "src", .recursive =  true, .relative = true },
-    { .path = "C:\\Program Files (x86)\Windows Kits\\10\\include\\10.0.22000.0\\shared", .recursive =  false, .relative = false },
   },
 	
 };
@@ -31,7 +30,7 @@ commands =
 {
   .build_exe =
   {
-		.win              = "build.bat -exe",
+		.win              = "build.bat exe",
     .out              = "*compilation*",
 		.footer_panel     = true, 
 		.save_dirty_files = true, 
@@ -40,7 +39,16 @@ commands =
   
   .build_dll =
   {
-		.win              = "build.bat -dll",
+		.win              = "build.bat dll",
+    .out              = "*compilation*",
+		.footer_panel     = true, 
+		.save_dirty_files = true, 
+		.cursor_at_end    = false,
+	},
+  
+  .build_test =
+  {
+		.win              = "build.bat test",
     .out              = "*compilation*",
 		.footer_panel     = true, 
 		.save_dirty_files = true, 
@@ -49,7 +57,7 @@ commands =
   
   .run =
   {
-		.win              = "run.bat",
+    .win              = "run.bat",
 		.footer_panel     = false, 
 		.save_dirty_files = true, 
 		.cursor_at_end    = false,
@@ -76,6 +84,7 @@ fkey_command =
 {
   .F1  = "build_exe",
   .F2  = "build_dll",
+  .F3  = "build_test",
   
   .F12 = "run",
   .F11 = "debug",

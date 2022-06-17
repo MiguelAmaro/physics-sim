@@ -40,7 +40,7 @@ static void SimInit(app_state *AppState)
   
   // NOTE(MIGUEL): Wall Entities
   
-#if TEST
+#if 1
 #endif
   entity *EntityWallLeft   = AppState->Entities + AppState->EntityCount++;
   entity *EntityWallRight  = AppState->Entities + AppState->EntityCount++;
@@ -218,7 +218,7 @@ void DrawRect(render_buffer *RenderBuffer, r2f Rect, v3f EulerAngles, v4f Color)
 {
   v3f Dim = V3f(Rect.max.x - Rect.min.x, Rect.max.y - Rect.min.y, 0.0f);
   v3f Pos = V3f(Rect.min.x + Dim.x*0.5f, Rect.min.y + Dim.y*0.5f, 0.5f);
-  RenderCmdPushQuad(RenderBuffer, Pos, Dim, EulerAngles, 0, Color);
+  RenderCmdPushQuad(RenderBuffer, Pos, Dim, EulerAngles, 1, Color);
   return;
 }
 
@@ -433,10 +433,10 @@ extern "C" SIM_UPDATE(Update)
   
   memory_arena *TextArena = &AppState->TextArena;
   memory_arena *LineArena = &AppState->LineArena;
-  memory_arena *UIArena   = &GlobalUIState.Arena;
+  memory_arena  UIArena;
   ArenaInit(TextArena, KILOBYTES(20), AppMemory->TransientStorage);
   ArenaInit(LineArena, KILOBYTES(10000), (u8 *)AppMemory->TransientStorage + TextArena->Size);
-  ArenaInit(UIArena,   KILOBYTES(10000), (u8 *)LineArena->BasePtr + LineArena->Size);
+  ArenaInit(&UIArena,   KILOBYTES(10000), (u8 *)LineArena->BasePtr + LineArena->Size);
   
   //RenderCmdPushQuad(RenderBuffer, V3f(0.0, 0.0, 0.0f), V3f(4000.0f, 4000.0f, 1.0f), V3f(1.0f, 1.0f, 0.0f));
   str8 MsPerFrameLabel   = Str8FormatFromArena(TextArena, "MSPerFrame: %.2f \n", AppState->DeltaTimeMS);
@@ -484,10 +484,10 @@ extern "C" SIM_UPDATE(Update)
       v3f Acc   = Entity->Acc * 1.0f;
       v3f Vel   = Speed * (Entity->Vel);
       
-      v3f PosDelta = (0.5f * Acc * Square(AppState->DeltaTimeMS) +
-                      Vel * AppState->DeltaTimeMS);
+      v3f PosDelta = (0.5f * Acc * Square((f32)AppState->DeltaTimeMS) +
+                      Vel * (f32)AppState->DeltaTimeMS);
       
-      Entity->Vel = Acc * AppState->DeltaTimeMS + Entity->Vel;
+      Entity->Vel = Acc * (f32)AppState->DeltaTimeMS + Entity->Vel;
       
       u32 MaxCollisonIterations = 4;
       f32 NormalizedCollisionPoint = 1.0f;
@@ -616,10 +616,7 @@ extern "C" SIM_UPDATE(Update)
             //Entity->Vel = V3fLength(Entity->Vel) * V3fLerp(0.4f, V3fNormalize(Entity->Vel), Dir);
           }
         }
-        
         Entity->Pos += PosDelta;
-        
-        
       }
 #if 0
       
@@ -663,7 +660,22 @@ extern "C" SIM_UPDATE(Update)
   
   //~UI USAGE CODE
   
-  UIBigTitleBar();
+  UICoreStateInit(RenderBuffer, AppState->WindowDim, AppInput, UIArena);
+  ui_block NewParent = {0};
+  NewParent.Rect = R2f(0.0f, 0.0f, 200.0f, 28.0f);
+  NewParent.Size[Axis_Y].Value = 30.0f;
+  NewParent.Color = V4f(0.0f, 0.0f, 0.0f, 1.0f);
+  UICoreParentStackPushBlock(NewParent);
+  if(UIBuildButton("Open").Hover)
+  {
+    UIBuildButton("Save");
+    if(UIBuildButton("Export").Hover)
+    {
+      UIBuildBannerList("Banner");
+      UIBuildBanner();
+      UIBuildBanner();
+    }
+  }
   
   
   //~END UI USAGE CODE
