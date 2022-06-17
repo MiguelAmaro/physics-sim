@@ -405,7 +405,7 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
   return;
 }
 
-#include "physics_sim_ui.c"
+#include "physics_sim_ui.cpp"
 extern "C" SIM_UPDATE(Update)
 {
   //TIMED_BLOCK;
@@ -527,7 +527,7 @@ extern "C" SIM_UPDATE(Update)
               goto ProcessNextEntity;
             }
             
-            Assert(Entity->Exists == true);
+            Assert(Entity->Exists == 1);
             
             r2f MinkowskiTestEntityBounds = { 0 };
             MinkowskiTestEntityBounds = R2fAddRadiusTo(TestEntityBounds,
@@ -659,8 +659,8 @@ extern "C" SIM_UPDATE(Update)
   }
   
   //~UI USAGE CODE
-  
-  UICoreStateInit(RenderBuffer, AppState->WindowDim, AppInput, UIArena);
+  UICoreStateInit(&AppState->UIState, RenderBuffer, AppState->WindowDim, AppInput, UIArena);
+#if 1
   ui_block NewParent = {0};
   NewParent.Rect = R2f(0.0f, 0.0f, 200.0f, 28.0f);
   NewParent.Size[Axis_Y].Value = 30.0f;
@@ -670,12 +670,31 @@ extern "C" SIM_UPDATE(Update)
   {
     UIBuildButton("Save");
   }
+  
   if(UIBuildButton("Export").Hover)
   {
     UIBuildBannerList("Banner");
     UIBuildBanner();
     UIBuildBanner();
   }
+#else
+  // NOTE(MIGUEL): My new interpretations of ryans ui Experimental
+  // make block/widet (use parent stack to assign a parent)
+  // if there is a new parent the push
+  // the parent of any new block is assumed to be at the top of the stack
+  // new block are responsible for checking if thety are they are parents first child and themselve if firest child
+  // new block are responstible for assing themselves as the parent last child
+  // what are the mechanisme for controlling weather the block gets pushed as a parent
+  int KeyPointer = 0;
+  if(UIBuildNewButton("Open ###%1", MakeKey(&KeyPointer, 0)).Hover)
+  {
+    UIBuildNewButton("Save", MakeKey(&KeyPointer, 1));
+    UIBuildNewButton("Save", MakeKey(&KeyPointer, 2));
+    UIBuildNewButton("Save", MakeKey(&KeyPointer, 3));
+    UIBuildNewButton("Save", MakeKey(&KeyPointer, 4));
+  }
+  
+#endif
   
   
   //~END UI USAGE CODE

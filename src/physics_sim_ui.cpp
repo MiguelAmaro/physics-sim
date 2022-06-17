@@ -12,14 +12,14 @@ void UICoreComputeAxisPos()
 
 ui_block *UICoreParentStackGetTop(void)
 {
-  ui_state *State = &GlobalUIState;
+  ui_state *State = GlobalUIState;
   ui_block *TopParent = State->ParentStack + State->ParentCount - 1;
   return TopParent;
 }
 
 void UICoreParentStackPop()
 {
-  ui_state *State = &GlobalUIState;
+  ui_state *State = GlobalUIState;
   if(State->ParentCount > 0)
   {
     State->ParentCount--;
@@ -33,7 +33,7 @@ void UICoreParentStackPop()
 
 void UICoreParentStackPushBlock(ui_block Parent)
 {
-  ui_state *State = &GlobalUIState;
+  ui_state *State = GlobalUIState;
   if(State->ParentCount < State->ParentMaxCount)
   {
     ui_block *NewParent = State->ParentStack + State->ParentCount++;
@@ -43,16 +43,23 @@ void UICoreParentStackPushBlock(ui_block Parent)
   return;
 }
 
-void UICoreStateInit(render_buffer *RenderBuffer, v2f WindowDim, app_input *Input, memory_arena Arena)
+void UICoreStateInit(ui_state *State, render_buffer *RenderBuffer, v2f WindowDim, app_input *Input, memory_arena Arena)
 {
-  ui_state Result = {0};
-  Result.WindowDim = WindowDim;
-  Result.Input = *Input;
-  Result.RenderBuffer = RenderBuffer;
-  Result.ParentCount = 0;
-  Result.ParentMaxCount = 256;
-  Result.Arena = Arena;
-  GlobalUIState = Result;
+  State->WindowDim = WindowDim;
+  State->Input = *Input;
+  State->RenderBuffer = RenderBuffer;
+  State->ParentCount = 0;
+  State->ParentMaxCount = 256;
+  State->Arena = Arena;
+  State->UIBlockHashCount = 0;
+  State->UIBlockHashMaxCount = 1049;
+  for(u32 Index=0; Index<State->UIBlockHashMaxCount; Index++)
+  {
+    ui_block *Block = State->UIBlockHash + Index;
+    MemorySet(0, Block, sizeof(ui_block));
+    Block->Key.Key = U64MAX;
+  }
+  GlobalUIState = State;
   
   // NOTE(MIGUEL): This maybe a mis underastatnding of ryans ui guide
 #if 0
@@ -95,57 +102,98 @@ void UICoreSetLayoutAxis()
   
 }
 
-ui_block *UICoreLookUpBlock(str8 String)
+ui_block *UICoreLookUpBlock(ui_key Key)
 {
-  
-  
-  return SIM_NULL;
+  ui_state *State = GlobalUIState;
+  ui_block *Found = SIM_NULL;
+  State->UIBlockHash;
+  u32 FNVOffsetBasis = 2166136261; // NOTE(MIGUEL): 32Bit offset basis
+  u32 FNVPrime       = 16777619;   // NOTE(MIGUEL): 32Bit offset basis
+  u32 ByteCount = sizeof(Key.Key);
+  Assert(ByteCount == 8);
+  u32 DataIndex = 0;
+  u8 *Data      = (u8 *)(&Key);
+  u32 Hash = FNVOffsetBasis;
+  for(u32 ByteIndex=0; ByteIndex<ByteCount; ByteIndex++)
+  {
+    Hash = Hash*FNVPrime;
+    Hash = Hash ^ Data[DataIndex];
+  }
+  u32 HashIndex = Hash % State->UIBlockHashMaxCount;
+  u32 SearchIndex = HashIndex;
+  ui_block *Entry = State->UIBlockHash + (SearchIndex % State->UIBlockHashMaxCount);
+  if(Entry->Key.Key == Key.Key) Found = Entry;
+  while(!Found)
+  {
+    Entry = State->UIBlockHash + (SearchIndex % State->UIBlockHashMaxCount);
+    // NOTE(MIGUEL): Internal Chaining
+    if(Entry->Key.Key == U64MAX)
+    {
+      Found = Entry; break;
+    }
+    if(SearchIndex++ == HashIndex) break;
+  }
+  return Found;
 }
 
-ui_block *UICoreCreateBlock(const char *Label, u32 Flags)
+/*
+1. Memory for hash table (DONE!!!!)
+2. Make sure hash mem is accesable from createblock(DONE!!!)
+3. Decide on a keying strategyu(go with the easiest) pointer(DONE!!!)
+4. Find some hash function that work with keyinng stategty (DONE!!!)
+5. Test the hash function.
+6. Accept that parent stack is a busted concept and will be ignored for now
+7. Use hash table  for storage of ui widget hierarchy
+8. 
+
+
+*/
+
+ui_block *UICoreCreateBlock(const char *Label, u32 Flags, ui_key Key)
 {
   // NOTE(MIGUEL): Maybe base on misunderstanding
-  ui_state *State = &GlobalUIState;
+  ui_state *State = GlobalUIState;
   ui_block *Parent = UICoreParentStackGetTop();
-  
-  ui_block *NewBlock = UICoreLookUpBlock(Str8FromCStr("Confusion"));
-  if(NewBlock)
+  ui_block *NewBlock = UICoreLookUpBlock(Key);
+  Assert(NewBlock != SIM_NULL);
+  NewBlock->Parent      = Parent;
+  /*Parent->LastChild->NewBlock->*/
+  NewBlock->PrevSibling = Parent->LastChild;
+  NewBlock->NextSibling = SIM_NULL;
+  NewBlock->FirstChild  = SIM_NULL;
+  NewBlock->LastChild   = SIM_NULL;
+  if(Parent->FirstChild == SIM_NULL)
   {
-    Parent->FirstChild    = NewBlock;
-    NewBlock->Parent      = Parent;
-    NewBlock->FirstChild  = SIM_NULL;
-    NewBlock->LastChild   = SIM_NULL;
-    NewBlock->PrevSibling = SIM_NULL;
-    NewBlock->NextSibling = SIM_NULL;
-    
-    //Size
-    NewBlock->Size[Axis_X].Option = UI_Size_PercentOfParent;
-    NewBlock->Size[Axis_X].Value = 1.0f;
-    NewBlock->Size[Axis_X].Strictness = 1.0f;
-    
-    NewBlock->Size[Axis_Y].Option = UI_Size_PercentOfParent;
-    NewBlock->Size[Axis_Y].Value = 0.5f;
-    NewBlock->Size[Axis_Y].Strictness = 1.0f;
-    
-    NewBlock->ComputedSize.x = (Parent->Rect.max.x-Parent->Rect.min.x)*NewBlock->Size[Axis_X].Value;
-    NewBlock->ComputedSize.y = (Parent->Rect.max.y-Parent->Rect.min.y)*NewBlock->Size[Axis_Y].Value;
-    NewBlock->ComputedRelPos.x  = (Parent->Rect.max.x-Parent->Rect.min.x);
-    NewBlock->ComputedRelPos.y  = (Parent->Rect.max.y-Parent->Rect.min.y);
-    
-    NewBlock->Rect = R2f(0.0f,0.0f,100.0f, 100.0f);
-    
-    UICoreComputeAxisPos();
-    if(Label)
-    {
-      NewBlock->String = Str8FromCStr(Label);
-    }
+    Parent->FirstChild = NewBlock;
+  }
+  
+  //Size
+  NewBlock->Size[Axis_X].Option = UI_Size_PercentOfParent;
+  NewBlock->Size[Axis_X].Value = 1.0f;
+  NewBlock->Size[Axis_X].Strictness = 1.0f;
+  
+  NewBlock->Size[Axis_Y].Option = UI_Size_PercentOfParent;
+  NewBlock->Size[Axis_Y].Value = 0.5f;
+  NewBlock->Size[Axis_Y].Strictness = 1.0f;
+  
+  NewBlock->ComputedSize.x = (Parent->Rect.max.x-Parent->Rect.min.x)*NewBlock->Size[Axis_X].Value;
+  NewBlock->ComputedSize.y = (Parent->Rect.max.y-Parent->Rect.min.y)*NewBlock->Size[Axis_Y].Value;
+  NewBlock->ComputedRelPos.x  = (Parent->Rect.max.x-Parent->Rect.min.x);
+  NewBlock->ComputedRelPos.y  = (Parent->Rect.max.y-Parent->Rect.min.y);
+  
+  NewBlock->Rect = R2f(0.0f,0.0f,100.0f, 100.0f);
+  
+  UICoreComputeAxisPos();
+  if(Label)
+  {
+    NewBlock->String = Str8FromCStr(Label);
   }
   return NewBlock;
 }
 
 ui_input GetUIInput(ui_block *Parent)
 {
-  ui_state *State = &GlobalUIState;
+  ui_state *State = GlobalUIState;
   ui_input Result = {0};
   Result.Hover = R2fIsInside(Parent->Rect, State->Input.MousePos);
   return Result;
@@ -157,7 +205,7 @@ ui_input GetUIInput(ui_block *Parent)
 
 ui_input UIBuildButton(const char *Label)
 {
-  ui_state *State = &GlobalUIState;
+  ui_state *State = GlobalUIState;
   ui_block *Parent = UICoreParentStackGetTop();
   ui_block LastParent = *Parent;
   if(Parent)
@@ -166,8 +214,8 @@ ui_input UIBuildButton(const char *Label)
     r2f Rect = Parent->Rect;
     Rect = R2f(Rect.min.x, State->WindowDim.y-Rect.max.y, Rect.max.x, State->WindowDim.y-Rect.min.y);
     
-    DrawRect(GlobalUIState.RenderBuffer, Rect, V3f(1.0f,0.0f,0.0f), Parent->Color);
-    DrawSomeText(GlobalUIState.RenderBuffer, Str8FromCStr(Label), 10, V3f(Rect.min.x+10.0f, Rect.min.y+Parent->Size[Axis_Y].Value*0.5f, 1.0f),
+    DrawRect(GlobalUIState->RenderBuffer, Rect, V3f(1.0f,0.0f,0.0f), Parent->Color);
+    DrawSomeText(GlobalUIState->RenderBuffer, Str8FromCStr(Label), 10, V3f(Rect.min.x+10.0f, Rect.min.y+Parent->Size[Axis_Y].Value*0.5f, 1.0f),
                  V4f(1.0f, 1.0f, 1.0f, 1.0f));
     
     // NOTE(MIGUEL): Calculated Position based on sematics
@@ -183,18 +231,46 @@ ui_input UIBuildButton(const char *Label)
   return Result;
 }
 
+ui_input UIBuildNewButton(const char *Label, ui_key Key)
+{
+  ui_state *State = GlobalUIState;
+  ui_block *UIBlock = UICoreCreateBlock(Label,
+                                        UI_BlockFlag_DrawText |
+                                        UI_BlockFlag_HotAnimation |
+                                        UI_BlockFlag_DrawBackground, Key);
+  UICoreParentStackPushBlock(*UIBlock);
+  r2f Rect = UIBlock->Rect;
+  Rect = R2f(Rect.min.x, State->WindowDim.y-Rect.max.y, Rect.max.x, State->WindowDim.y-Rect.min.y);
+  
+  DrawRect(GlobalUIState->RenderBuffer, Rect, V3f(1.0f,0.0f,0.0f), UIBlock->Color);
+  DrawSomeText(GlobalUIState->RenderBuffer, Str8FromCStr(Label), 10, V3f(Rect.min.x+10.0f, Rect.min.y+UIBlock->Size[Axis_Y].Value*0.5f, 1.0f),
+               V4f(1.0f, 1.0f, 1.0f, 1.0f));
+  
+  ui_input Result = GetUIInput(UIBlock);
+  return Result;
+}
+
+ui_key MakeKey(void *Address, u64 Increment)
+{
+  ui_key Key = {0};
+  Key.Address = Address;
+  Key.Key += Increment;
+  Assert(Key.Key != U64MAX);
+  return Key;
+}
+
 void UIBuildSomething(const char *Label)
 {
   UICoreCreateBlock(Label,
                     UI_BlockFlag_DrawText |
-                    UI_BlockFlag_DrawBackground);
+                    UI_BlockFlag_DrawBackground, MakeKey((void *)69, 0));
   UICoreGetInput();
   return;
 }
 
 void UIBuildBanner()
 {
-  ui_state *State = &GlobalUIState;
+  ui_state *State = GlobalUIState;
   ui_block *Parent = UICoreParentStackGetTop();
   if(Parent)
   {
@@ -202,7 +278,7 @@ void UIBuildBanner()
     r2f Rect = Parent->Rect;
     Rect = R2f(Rect.min.x, State->WindowDim.y-Rect.max.y, Rect.max.x, State->WindowDim.y-Rect.min.y);
     
-    DrawRect(GlobalUIState.RenderBuffer, Rect, V3f(1.0f,0.0f,0.0f), Parent->Color);
+    DrawRect(GlobalUIState->RenderBuffer, Rect, V3f(1.0f,0.0f,0.0f), Parent->Color);
     Parent->Rect= R2f(Parent->Rect.min.x,
                       Parent->Rect.min.y + Parent->Size[Axis_Y].Value,
                       Parent->Rect.max.x,
@@ -262,6 +338,8 @@ It seems like ui widet is basically a struct that provede blue print to create a
 Are we using a stack and binary tree in tandem??
 Why do we need a frame of delay to respond to inputs also why is the order backwareds and why cant we just sort beffore drawing????
 
+whay is a command buffer bad? its very wastefull but wasteful. 
+Is it wastefull to use the command buffer for arbitrary featrues or to render quads?
 
 
 */

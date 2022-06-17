@@ -124,9 +124,10 @@ struct ui_size
   f32 Strictness;
 };
 
-enum ui_key
+union ui_key
 {
-  
+  void *Address;
+  u64   Key;
 };
 
 struct ui_input
@@ -191,11 +192,17 @@ struct ui_state
   ui_block *ActiveParent;
   
   app_input Input;
-  ui_block *BlockRoot;
+  // NOTE(MIGUEL): Reading ryaans ui guide the usual amount of widgets used at any given moment is ~400
+  //               1000 widgets is an upper bound. Im allocating mem upfront for the worst case but 
+  //               i might want to allocate as i go. I'm choosing not to because i dont thint any extra
+  //               complecity is worth it.
+  ui_block  UIBlockHash[1049];
+  u32       UIBlockHashCount;
+  u32       UIBlockHashMaxCount;
   memory_arena Arena;
 };
 
-global ui_state   GlobalUIState;
+global ui_state *GlobalUIState;
 
 //
 // basic key type helpers
@@ -223,6 +230,7 @@ struct app_state
   u32 EntityCount;
   u32 EntityMaxCount;
   u32 DeadEntityCount;
+  ui_state UIState;
   dbg_cycle_counter Counter[DBG_CycleCounter_Count];
 };
 
