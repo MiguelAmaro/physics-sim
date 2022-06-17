@@ -669,12 +669,12 @@ extern "C" SIM_UPDATE(Update)
   if(UIBuildButton("Open").Hover)
   {
     UIBuildButton("Save");
-    if(UIBuildButton("Export").Hover)
-    {
-      UIBuildBannerList("Banner");
-      UIBuildBanner();
-      UIBuildBanner();
-    }
+  }
+  if(UIBuildButton("Export").Hover)
+  {
+    UIBuildBannerList("Banner");
+    UIBuildBanner();
+    UIBuildBanner();
   }
   
   

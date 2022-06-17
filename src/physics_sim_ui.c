@@ -95,12 +95,21 @@ void UICoreSetLayoutAxis()
   
 }
 
-ui_block *UICoreBlockCreate(const char *Label, u32 Flags)
+ui_block *UICoreLookUpBlock(str8 String)
+{
+  
+  
+  return SIM_NULL;
+}
+
+ui_block *UICoreCreateBlock(const char *Label, u32 Flags)
 {
   // NOTE(MIGUEL): Maybe base on misunderstanding
   ui_state *State = &GlobalUIState;
-  ui_block *NewBlock = ArenaPushStruct(&State->Arena, ui_block);
   ui_block *Parent = UICoreParentStackGetTop();
+  
+  ui_block *NewBlock = UICoreLookUpBlock(Str8FromCStr("Confusion"));
+  if(NewBlock)
   {
     Parent->FirstChild    = NewBlock;
     NewBlock->Parent      = Parent;
@@ -176,7 +185,7 @@ ui_input UIBuildButton(const char *Label)
 
 void UIBuildSomething(const char *Label)
 {
-  UICoreBlockCreate(Label,
+  UICoreCreateBlock(Label,
                     UI_BlockFlag_DrawText |
                     UI_BlockFlag_DrawBackground);
   UICoreGetInput();

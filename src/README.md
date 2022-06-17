@@ -99,3 +99,12 @@ is viewed by both the exe src and dll src will just result in both the dll and e
 that variable. Therefore i can assign the appstate ptr some memory in a dll function but exe wont know because it has it's own
 appstate ptr which is completely seperate and still null. hence the crash.
 
+
+**NOTE(MIGUEL): (05/32/2022)**
+
+I'm going to implement some input into the programa and use HMH and Ryan's UI Articles to get some simple UI going.
+
+
+**NOTE(MIGUEL): (06/16/2022)**
+
+How is the widget hierarchy being built? Is it relying on the parent stack. How are siblings added? If there is a parent always accessible via parent stack then surley i can use the last child tree link for appending siblings conveinitnly. Of course the widget cache/hashtable need to to be in persitant memory to persist accross frame boundries. I have an idea of doing a lookup into the widget cache to view the state of a widghet on the previous frame but what is the policy on adding a new widget to the cache. Do they all get cached?? Before i could have a single layout object be shared by several buttons which are just funcion calls. layout struct evolved into the widget struct hold crossframe data for each widget as well as layout data. And now seems like there needs to be a widget data struct for each button? Is that understanding correct?
