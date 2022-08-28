@@ -3,7 +3,7 @@ version(2);
 project_name =  "Physics Sim";
 
 patterns = {
-  "*.cpp",
+  "*.c",
   "*.h",
   "*.hlsl",
   "*.sh",

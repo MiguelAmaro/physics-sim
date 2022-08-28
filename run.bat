@@ -2,6 +2,6 @@
 
 pushd build
 
-if exist physics_sim.exe (start physics_sim.exe) else (echo "ERROR: physics_sim.exe" does not exist!!!)
+if exist win32_main.exe (start win32_main.exe) else (echo "ERROR: win32_main.exe" does not exist!!!)
 
 popd

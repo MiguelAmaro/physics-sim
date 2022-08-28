@@ -1,26 +1,35 @@
-// ConsoleApplication1.cpp : Defines the entry point for the console application.
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#define COBJMACROS
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <d3dcompiler.h>
 
 #include <timeapi.h>
 
-#include "physics_sim_config.h"
-#include "physics_sim_blah.h"
-#include "physics_sim_assets.h"
-#include "physics_sim_types.h"
-#include "physics_sim_memory.h"
-#include "physics_sim_renderer.h"
-#include "physics_sim_math.h"
+#include "config.h"
+#include "types.h"
+#include "memory.h"
+#include "string.h"
+#include "os.h"
+#include "math.h"
+
+#include "renderer.h"
+#include "app.h"
+#include "assets.h"
+
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#include "memory.c"
+#include "string.c"
+#include "win32_core.c" //os.c
+
 global FT_Library FreeType;
 global FT_Face    Face;
-
 
 /// SET INPUT LAYOUT
 global D3D11_INPUT_ELEMENT_DESC gVertexLayout[3] = { 0 };
@@ -30,29 +39,38 @@ global u32 gLineVLayoutCount = 3;
 
 //-/ MACROS
 
+#define PERMANENT_STORAGE_SIZE (Megabytes(256))
+#define TRANSIENT_STORAGE_SIZE (Gigabytes(  4))
+
 #define WIN32_STATE_FILE_NAME_COUNT (MAX_PATH)
 
 
 //-/ TYPES
 
+typedef struct bit_scan_result bit_scan_result;
 struct bit_scan_result
 {
   b32 Found;
   u32 Index;
 };
 
+/// process meta data
+typedef struct win32_state win32_state;
 struct win32_state
 {
-  char  ExeFileName[WIN32_STATE_FILE_NAME_COUNT];
-  char *OnePastLastExeFileNameSlash;
+  str8 ExeName;
+  str8 ExeDir;
+  u8   Buffer[WIN32_STATE_FILE_NAME_COUNT];
 };
 
-struct win32_WindowDim
-{
-  u32 Width;
-  u32 Height;
-};
-
+// Dep
+//struct win32_WindowDim
+//{
+//u32 Width;
+//u32 Height;
+//};
+//
+typedef struct buffer buffer;
 struct buffer
 {
   u32 Width;
@@ -65,12 +83,12 @@ struct buffer
 
 win32_state     g_winstate;
 renderer        g_Renderer;
-win32_WindowDim g_WindowDim;
+v2s             g_WindowDim; //(dep)
 b32             g_WindowResized;
 
-uint32_t g_Running = true;
-b32 gPause     = false;
-b32 gFrameStep = false;
+b32 g_Running  = TRUE;
+b32 gPause     = FALSE;
+b32 gFrameStep = TRUE;
 
 //-/ FUNCTIONS
 static u32
@@ -121,31 +139,19 @@ void InitInput(app_input *Input, HWND Window)
 }
 
 static bitmapdata
-LoadBitmap(const char *FileName)
+LoadBitmapData(const char *FileName)
 {
   bitmapdata Result = { 0 };
-  
   LARGE_INTEGER FileSize;
-  
-  HANDLE FileHandle = CreateFileA(FileName,
-                                  GENERIC_READ,
-                                  FILE_SHARE_READ,
-                                  0,
-                                  OPEN_EXISTING,
-                                  0, 0);
-  
+  HANDLE FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ,
+                                  0, OPEN_EXISTING, 0, 0);
   GetFileSizeEx(FileHandle, &FileSize);
-  
   u32 FileSize32 = SafeTruncateu64(FileSize.QuadPart);
-  
   void *Block = VirtualAlloc(0, FileSize32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  
   Assert(Block);
-  
   if(FileSize32 > 0)
   {
     DWORD BytesRead;
-    
     if(ReadFile(FileHandle, Block, FileSize32, &BytesRead, 0) &&
        (FileSize32 == BytesRead))
     { }
@@ -155,35 +161,27 @@ LoadBitmap(const char *FileName)
       VirtualFree(Block, 0, MEM_RELEASE);
       Block = 0;
     }
-    
     bitmapheader *Header = (bitmapheader *)Block;
     u32 *Pixels = (u32 *)((u8 *)Block + Header->BitmapOffset);
-    
     Result.Pixels = (u8 *)Pixels;
     Result.Width  = Header->Width;
     Result.Height = Header->Height;
     Result.BytesPerPixel = (Header->BitsPerPixel / 8);
-    
     if(Header->Compression > 0)
     {
       u32 RedMask   = Header->RedMask;
       u32 GreenMask = Header->GreenMask;
       u32 BlueMask  = Header->BlueMask;
       u32 AlphaMask = ~(RedMask | GreenMask | BlueMask);
-      
       bit_scan_result RedShift   = FindLeastSignificantSetBit(RedMask  );
       bit_scan_result GreenShift = FindLeastSignificantSetBit(GreenMask);
       bit_scan_result BlueShift  = FindLeastSignificantSetBit(BlueMask );
       bit_scan_result AlphaShift = FindLeastSignificantSetBit(AlphaMask);
-      
-      
       Assert(  RedShift.Found);
       Assert(GreenShift.Found);
       Assert( BlueShift.Found);
       Assert(AlphaShift.Found);
-      
       u32 *SrcDest = Pixels;
-      
       for(    s32 y = 0; y < Header->Height; y++)
       {
         for(s32 x = 0; x < Header->Width; x++)
@@ -198,7 +196,6 @@ LoadBitmap(const char *FileName)
       }
     }
   }
-  \
   return Result;
 }
 
@@ -229,24 +226,21 @@ D3D11InitTextureMapping(renderer                 *Renderer,
   D3D11_SUBRESOURCE_DATA SubresData = { 0 };
   SubresData.pSysMem     = BitmapData->Pixels;
   SubresData.SysMemPitch = BitmapData->Width * BitmapData->BytesPerPixel;
-  
-  Renderer->Device->CreateTexture2D(&TextDesc, &SubresData, Texture);
+  ID3D11Device_CreateTexture2D(Renderer->Device, &TextDesc, &SubresData, Texture);
   
   D3D11_SHADER_RESOURCE_VIEW_DESC ResViewDesc = { 0 };
   ResViewDesc.Format          = TextDesc.Format;
   ResViewDesc.ViewDimension   = D3D11_SRV_DIMENSION_TEXTURE2D;
   ResViewDesc.Texture2D.MostDetailedMip = 0;
   ResViewDesc.Texture2D.MipLevels       = 1;
-  
-  Renderer->Device->CreateShaderResourceView(*Texture, &ResViewDesc, ResView);
+  ID3D11Device_CreateShaderResourceView(Renderer->Device, (ID3D11Resource*)*Texture, &ResViewDesc, ResView);
   
   D3D11_SAMPLER_DESC SamplerDesc = { 0 };
   SamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
   SamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
   SamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
   SamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-  
-  Renderer->Device->CreateSamplerState(&SamplerDesc, SamplerState);
+  ID3D11Device_CreateSamplerState(Renderer->Device, &SamplerDesc, SamplerState);
   
   return;
 }
@@ -254,11 +248,10 @@ D3D11InitTextureMapping(renderer                 *Renderer,
 static void
 D3D11Release(renderer *Renderer)
 {
-  if(Renderer->RenderTargetView) Renderer->RenderTargetView->Release();
-  if(Renderer->SwapChain       ) Renderer->SwapChain->Release();
-  if(Renderer->Context         ) Renderer->Context->Release();
-  if(Renderer->Device          ) Renderer->Device->Release();
-  
+  if(Renderer->RenderTargetView) ID3D11RenderTargetView_Release(Renderer->RenderTargetView);
+  //if(Renderer->SwapChain       ) ID3D11SwapChain_Release();
+  if(Renderer->Context         ) ID3D11DeviceContext_Release(Renderer->Context);
+  if(Renderer->Device          ) ID3D11Device_Release(Renderer->Device);
   return;
 }
 
@@ -266,7 +259,7 @@ static b32
 D3D11Startup(HWND Window, renderer *Renderer)
 {
   HRESULT Status;
-  b32     Result = true;
+  b32     Result = TRUE;
   
   D3D_FEATURE_LEVEL Levels[] = {D3D_FEATURE_LEVEL_11_0};
   UINT Flags = (D3D11_CREATE_DEVICE_BGRA_SUPPORT   |
@@ -284,8 +277,8 @@ D3D11Startup(HWND Window, renderer *Renderer)
   
   DXGI_SWAP_CHAIN_DESC1 SwapChainDescription = {0};
   SwapChainDescription.BufferCount = 2; 
-  SwapChainDescription.Width  = g_WindowDim.Width;
-  SwapChainDescription.Height = g_WindowDim.Height;
+  SwapChainDescription.Width  = g_WindowDim.x;
+  SwapChainDescription.Height = g_WindowDim.y;
   SwapChainDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
   SwapChainDescription.BufferUsage        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
   SwapChainDescription.Scaling            = DXGI_SCALING_NONE;
@@ -296,25 +289,24 @@ D3D11Startup(HWND Window, renderer *Renderer)
   Assert(SUCCEEDED(Status));
   {
     IDXGIFactory2* Factory;
-    Status = CreateDXGIFactory(IID_IDXGIFactory2, (void **)&Factory);
+    Status = CreateDXGIFactory(&IID_IDXGIFactory2, &Factory);
     Assert(SUCCEEDED(Status));
-    Status = Factory->CreateSwapChainForHwnd((IUnknown*)Renderer->Device, Window,
-                                             &SwapChainDescription, NULL, NULL, &Renderer->SwapChain);
+    Status = IDXGIFactory2_CreateSwapChainForHwnd(Factory, (IUnknown*)Renderer->Device, Window,
+                                                  &SwapChainDescription, NULL, NULL, &Renderer->SwapChain);
     Assert(SUCCEEDED(Status));
-    Factory->Release();
+    IDXGIFactory2_Release(Factory);
   }
   {
     IDXGIFactory* Factory;
-    Renderer->SwapChain->GetParent(IID_IDXGIFactory, (void **)&Factory);
-    Factory->MakeWindowAssociation(Window, DXGI_MWA_NO_ALT_ENTER);
-    Factory->Release();
+    IDXGISwapChain1_GetParent(Renderer->SwapChain, &IID_IDXGIFactory, &Factory);
+    IDXGIFactory_MakeWindowAssociation(Factory, Window, DXGI_MWA_NO_ALT_ENTER);
+    IDXGIFactory_Release(Factory);	
   }
   ID3D11InfoQueue* Info;
-  Renderer->Device->QueryInterface(IID_ID3D11InfoQueue, (void **)&Info);
-  Info->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-  Info->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR, TRUE);
-  Info->Release();
-  
+  ID3D11Device_QueryInterface(Renderer->Device, &IID_ID3D11InfoQueue, &Info);
+  ID3D11InfoQueue_SetBreakOnSeverity(Info, D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+  ID3D11InfoQueue_SetBreakOnSeverity(Info, D3D11_MESSAGE_SEVERITY_ERROR, TRUE);
+  ID3D11InfoQueue_Release(Info);
   
 #if 0
   Status = D3D11CreateDeviceAndSwapChain(0, // NOTE(MIGUEL): Get default video adapter
@@ -329,33 +321,21 @@ D3D11Startup(HWND Window, renderer *Renderer)
                                          &Renderer->FeatureLevel, &Renderer->Context );
 #endif
   
-  
-  ID3D11Texture2D        *BackBufferTexture;
-  
-  Renderer->SwapChain->GetBuffer(0,
-                                 __uuidof(ID3D11Texture2D),
-                                 (LPVOID *)&BackBufferTexture);
-  
-  Status = Renderer->Device->CreateRenderTargetView(BackBufferTexture, 0,
-                                                    &Renderer->RenderTargetView);
-  
-  BackBufferTexture->Release();
-  
+  ID3D11Texture2D* Backbuffer;
+  IDXGISwapChain1_GetBuffer(Renderer->SwapChain, 0, &IID_ID3D11Texture2D, &Backbuffer);
+  ID3D11Device_CreateRenderTargetView(Renderer->Device, (ID3D11Resource*)Backbuffer, NULL, &Renderer->RenderTargetView);
+  ID3D11Texture2D_Release(Backbuffer);
   Assert(SUCCEEDED(Status));
   
-  
-  Renderer->Context->OMSetRenderTargets(1, &Renderer->RenderTargetView, 0);
-  
-  D3D11_VIEWPORT ViewPort;
-  ViewPort.TopLeftX = 0.0f;
-  ViewPort.TopLeftY = 0.0f;
-  ViewPort.Width  = (f32)g_WindowDim.Width;
-  ViewPort.Height = (f32)g_WindowDim.Height;
-  ViewPort.MinDepth = 0.0f;
-  ViewPort.MaxDepth = 1.0f;
-  
-  Renderer->Context->RSSetViewports(1, &ViewPort);
-  
+  ID3D11DeviceContext_OMSetRenderTargets(Renderer->Context, 1, &Renderer->RenderTargetView, 0);
+  D3D11_VIEWPORT Viewport;
+  Viewport.TopLeftX = 0.0f;
+  Viewport.TopLeftY = 0.0f;
+  Viewport.Width  = (f32)g_WindowDim.x;
+  Viewport.Height = (f32)g_WindowDim.y;
+  Viewport.MinDepth = 0.0f;
+  Viewport.MaxDepth = 1.0f;
+  ID3D11DeviceContext_RSSetViewports(Renderer->Context, 1, &Viewport);
   return Result;
 }
 
@@ -403,39 +383,13 @@ void PrintSystemMsg(UINT WinMsg)
 static LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
 {
   LRESULT Result = 0;
-  //OutputDebugString("processingMsg1\n");
-  /*
-switch (Message)
-{
-    
-    
-  case WM_CLOSE:
-  case WM_DESTROY:
-  {
-      PostQuitMessage(0);
-  } break;
-    
-  //case WM_CHAR:
-  case WM_SIZE:
-  {
-      OutputDebugString("Size Msg...");
-            
-  } break;
-    
-  default:
-  {
-      PrintSystemMsg(Message);
-} break;
-}
-  */
   Result = DefWindowProcW(Window, Message, WParam, LParam);
-  
   return Result;
 }
 
-static HWND CreateOutputWindow()
+static HWND CreateOutputWindow(void)
 {
-  WNDCLASSEXW WindowClass = {};
+  WNDCLASSEXW WindowClass = {0};
   
   WindowClass.cbSize        = sizeof(WindowClass);
   WindowClass.lpfnWndProc   = &WindowProc;
@@ -461,17 +415,17 @@ static HWND CreateOutputWindow()
     // NOTE(MIGUEL): Is this correct? What about Client Rect?
     AdjustWindowRect(&WindowDim,
                      WS_OVERLAPPEDWINDOW,
-                     false);
+                     FALSE);
     
-    g_WindowDim.Width  = WindowDim.right  - WindowDim.left;
-    g_WindowDim.Height = WindowDim.bottom - WindowDim.top;
+    g_WindowDim.x  = WindowDim.right  - WindowDim.left;
+    g_WindowDim.y = WindowDim.bottom - WindowDim.top;
     
     Result = CreateWindowExW(ExStyle,
                              WindowClass.lpszClassName,
                              L"Physics Simulation",
                              WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                              DEFAULT_WINDOW_COORDX, DEFAULT_WINDOW_COORDY,
-                             g_WindowDim.Width, g_WindowDim.Height,
+                             g_WindowDim.x, g_WindowDim.y,
                              0, 0, WindowClass.hInstance, 0);
   }
   
@@ -490,13 +444,6 @@ ProcessKeyboardMessage(button_state *NewState, b32 IsDown)
   return;
 }
 
-// NOTE(MIGUEL): HOTSWAPPING SHADERCODE
-#if 0
-
-#endif
-
-// NOTE(MIGUEL): HOTSWAPPING UPDATECODE
-#if 1
 static FILETIME
 win32_GetLastWriteTime(char *FileName)
 {
@@ -514,9 +461,7 @@ win32_GetLastWriteTime(char *FileName)
   return LastWriteTime;
 }
 
-
-
-
+typedef struct win32_sim_code win32_sim_code;
 struct win32_sim_code
 {
   HMODULE     SIM_DLL;
@@ -525,56 +470,29 @@ struct win32_sim_code
   FILETIME    DLLLastWriteTime;
 };
 
-
 static void
 win32_GetExeFileName(win32_state *State)
 {
-  /*
-  u32 FileNameSize = GetModuleFileNameA(0,
-                                        (LPSTR)State->ExeFileName,
-                                        sizeof(State->ExeFileName));
-  */
-  State->OnePastLastExeFileNameSlash = State->ExeFileName;
-  
-  for(char *Scan = (char *)State->ExeFileName; *Scan; ++Scan)
+  u32 TotalLength = GetModuleFileNameA(NULL,(LPSTR)State->Buffer, sizeof(State->Buffer));
+  u8 *Dir = State->Buffer;
+  u8 *Exe = State->Buffer;
+  for(u8 *Scan = (u8 *)State->Buffer; *Scan; ++Scan)
   {
-    if(*Scan == '\\')
-    {
-      State->OnePastLastExeFileNameSlash = Scan + 1;
-    }
+    if(*Scan == '\\') { Exe = Scan + 1;}
   }
-  
+  u32 Length = SafeTruncateu64(CStrGetLength((char *)Exe, 0));
+  State->ExeName = Str8(Exe, Length);
+  State->ExeDir  = Str8(Dir, TotalLength-Length);
   return;
 }
-
-static void
-S8Concat(size_t SourceACount, char *SourceA,
-         size_t SourceBCount, char *SourceB,
-         size_t DestCount   , char *Dest    )
-{
-  // TODO(MIGUEL): Dest bounds checking!
-  
-  for(u32 Index = 0; Index < SourceACount; Index++)
-  {
-    *Dest++ = *SourceA++;
-  }
-  
-  for(u32 Index = 0; Index < SourceBCount; Index++)
-  {
-    *Dest++ = *SourceB++;
-  }
-  
-  *Dest++ = 0;
-}
-
 
 static void
 win32_BuildExePathFileName(win32_state *State,
                            char *FileName,
                            size_t DestCount, char *Dest)
 {
-  S8Concat(State->OnePastLastExeFileNameSlash - State->ExeFileName,
-           State->ExeFileName,
+  S8Concat(State->ExeDir.Length,
+           (char *)State->ExeDir.Data,
            S8Length(FileName), FileName,
            DestCount, Dest);
   
@@ -602,7 +520,7 @@ win32_HotLoadSimCode(char *SourceDLLName, char *TempDLLName, char *LockedFileNam
     {
       Result.Update = (SIM_Update *)GetProcAddress(Result.SIM_DLL, "Update");
       
-      Result.IsValid = (Result.Update != nullptr);
+      Result.IsValid = (Result.Update != NULL);
     }
   }
   if(!(Result.IsValid))
@@ -622,17 +540,16 @@ win32_HotUnloadSimCode(win32_sim_code *Sim)
     FreeLibrary(Sim->SIM_DLL);
   }
   
-  Sim->IsValid = false;
+  Sim->IsValid = FALSE;
   Sim->Update  = 0;
   
   return;
 }
-#endif
 
 void
 ProcessPendingMessages(app_input *Input)
 {
-  MSG Message = {};
+  MSG Message = {0};
   
   while(PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
   {
@@ -642,7 +559,7 @@ ProcessPendingMessages(app_input *Input)
     {
       case WM_QUIT:
       {
-        g_Running = false;
+        g_Running = FALSE;
       }  break;
       /*
       case WM_MOUSEWHEEL:
@@ -700,7 +617,7 @@ ProcessPendingMessages(app_input *Input)
             
             case VK_RIGHT:
             {
-              gFrameStep = true;
+              gFrameStep = TRUE;
             } break;
             
             case VK_ESCAPE:
@@ -724,7 +641,7 @@ ProcessPendingMessages(app_input *Input)
             u32 AltKeyWasDown = ( Message.lParam & (1 << 29));
             if((VKCode == VK_F4) && AltKeyWasDown)
             {
-              g_Running = false;
+              g_Running = FALSE;
             }
             if((VKCode == VK_RETURN) && AltKeyWasDown)
             {
@@ -757,17 +674,17 @@ void CircleGeometry(v3f *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, 
   u32 VertCount = 0;
   
   //ORIGIN
-  *Vert = {0.0f, 0.0f, 0.0f};
+  *Vert = V3f(0.0f, 0.0f, 0.0f);
   Vert++; VertCount++;
   
   for(u32 Wedge = 0; Wedge<Resolution; Wedge++)
   {
-    f32 Theta = (2.0f * PI32 * (f32)Wedge) / (f32)Resolution;
+    f32 Theta = (2.0f * Pi32 * (f32)Wedge) / (f32)Resolution;
     if((Vert + 1) < BufferEnd)
     {
       f32 CT = Cosine(Theta);
       f32 ST = Sine(Theta);
-      *Vert = {0.5f * CT, 0.5f * ST, 0.0f};
+      *Vert = V3f(0.5f * CT, 0.5f * ST, 0.0f);
       Vert++; VertCount++;
     }
     else
@@ -813,8 +730,8 @@ void RenderPoints(renderer *Renderer,
   {
     Assert(PointList[Point].z == 0.5f);
     //PointList[Point] = V3f((f32)Point, (f32)Point, 0.5f);
-    PointList[Point] *= AppState->MeterToPixels;
-    PointList[Point] = PointList[Point] + WierdOffset;
+    PointList[Point] = Scale(PointList[Point], AppState->MeterToPixels);
+    PointList[Point] = Add(PointList[Point], V3f(WierdOffset, WierdOffset, 0.0f));
   }
   
   
@@ -829,71 +746,70 @@ void RenderPoints(renderer *Renderer,
   MemoryCopy(LineMeshVerts, sizeof(LineMeshVerts), LineVData, sizeof(LineMeshVerts));
   MemoryCopy(PointVerts, sizeof(PointVerts), LineVData+ArrayCount(LineMeshVerts), sizeof(PointVerts));
   
-  D3D11_MAPPED_SUBRESOURCE InstanceMap = { 0 };
-  Renderer->Context->Map(Renderer->LineVInstBuffer,
-                         0, D3D11_MAP_WRITE_DISCARD, 0,
-                         &InstanceMap);
+  D3D11_MAPPED_SUBRESOURCE InstanceMap = {0};
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->LineVInstBuffer,
+                          0, D3D11_MAP_WRITE_DISCARD, 0,
+                          &InstanceMap);
   MemoryCopy(PointList, sizeof(v3f)*PointCount, InstanceMap.pData, sizeof(v3f)*PointCount);
-  Renderer->Context->Unmap(Renderer->LineVInstBuffer, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->LineVInstBuffer, 0);
   
   D3D11_MAPPED_SUBRESOURCE Mapped = { 0 };
-  Renderer->Context->Map(Renderer->LineVBuffer,
-                         0, D3D11_MAP_WRITE_DISCARD, 0,
-                         &Mapped);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->LineVBuffer,
+                          0, D3D11_MAP_WRITE_DISCARD, 0,
+                          &Mapped);
   MemoryCopy(LineVData, sizeof(LineVData), Mapped.pData, sizeof(LineVData));
-  Renderer->Context->Unmap(Renderer->LineVBuffer, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->LineVBuffer, 0);
   
   
   D3D11_MAPPED_SUBRESOURCE JIMapped = { 0 };
-  Renderer->Context->Map(Renderer->LineIBuffer,
-                         0, D3D11_MAP_WRITE_DISCARD,
-                         0, &JIMapped);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->LineIBuffer,
+                          0, D3D11_MAP_WRITE_DISCARD,
+                          0, &JIMapped);
   MemoryCopy( PointIndeces, sizeof(u16)*PointIndexCount,
              JIMapped.pData, sizeof(u16)*PointIndexCount);
-  Renderer->Context->Unmap(Renderer->LineIBuffer, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->LineIBuffer, 0);
   
-  Renderer->ConstBufferHigh = {0};
+  //Renderer->ConstBufferHigh = {0};
   Renderer->ConstBufferHigh.Time = (f32)AppState->Time;
   Renderer->ConstBufferHigh.Color  = Color;
   Renderer->ConstBufferHigh.Width  = 10;
   Renderer->ConstBufferHigh.JoinType  = 1;
   
   D3D11_MAPPED_SUBRESOURCE MappedHigh = { 0 };
-  Renderer->Context->Map(Renderer->CBHigh, 0,
-                         D3D11_MAP_WRITE_DISCARD,
-                         0, &MappedHigh);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0,
+                          D3D11_MAP_WRITE_DISCARD,
+                          0, &MappedHigh);
   MemoryCopy( &Renderer->ConstBufferHigh, sizeof(gpu_const_high), 
              MappedHigh.pData, sizeof(gpu_const_high));
-  Renderer->Context->Unmap(Renderer->CBHigh, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0);
   
   ID3D11Buffer *PVBuffers[2] = { Renderer->LineVBuffer, Renderer->LineVInstBuffer };
   UINT          PVStrides[2] = { sizeof(v3f), sizeof(v3f)};
   UINT          PVOffsets[2] = { sizeof(LineMeshVerts), 0};
   
-  Renderer->Context->IASetVertexBuffers(0, 2, PVBuffers, PVStrides, PVOffsets);
-  Renderer->Context->IASetInputLayout(Renderer->LineInputLayout);
-  Renderer->Context->IASetIndexBuffer(Renderer->LineIBuffer, DXGI_FORMAT_R16_UINT, 0 );
-  Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+  ID3D11DeviceContext_IASetVertexBuffers(Renderer->Context, 0, 2, PVBuffers, PVStrides, PVOffsets);
+  ID3D11DeviceContext_IASetInputLayout(Renderer->Context, Renderer->LineInputLayout);
+  ID3D11DeviceContext_IASetIndexBuffer(Renderer->Context, Renderer->LineIBuffer, DXGI_FORMAT_R16_UINT, 0 );
+  ID3D11DeviceContext_IASetPrimitiveTopology(Renderer->Context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
   
-  Renderer->Context->VSSetShader(Renderer->LineVShader, 0, 0);
-  Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBLow);
-  Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBHigh);
+  ID3D11DeviceContext_VSSetShader(Renderer->Context, Renderer->LineVShader, 0, 0);
+  ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+  ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
   
-  Renderer->Context->PSSetShader(Renderer->LinePShader, 0, 0);
-  Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
-  Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
-  Renderer->Context->RSSetState(Renderer->Rasterizer);
+  ID3D11DeviceContext_PSSetShader(Renderer->Context, Renderer->LinePShader, 0, 0);
+  ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+  ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
+  ID3D11DeviceContext_RSSetState(Renderer->Context, Renderer->Rasterizer);
   
-  Renderer->Context->DrawIndexedInstanced(PointIndexCount, PointCount, 0, 0, 0);
+  ID3D11DeviceContext_DrawIndexedInstanced(Renderer->Context, PointIndexCount, PointCount, 0, 0, 0);
   
   return;
 }
 
 
-void DebugClearTimers()
+void DebugClearTimers(void)
 {
   // NOTE(MIGUEL): print out from here??? maybe???
-  
   for(u32 Timer=0; Timer<DBG_CycleCounter_Count; Timer++)
   {
     MemorySet(0, &GlobalDebugState[Timer], sizeof(GlobalDebugState[Timer]));
@@ -904,6 +820,7 @@ void DebugClearTimers()
 
 void DrawLine(renderer *Renderer,
               app_state *AppState,
+              cam *Camera,
               f32 LineWidth,
               v3f *PointList,
               u32 PointCount,
@@ -912,12 +829,11 @@ void DrawLine(renderer *Renderer,
   //-ROUNDJOINS
   u32 LineCount = PointCount - 1;
   u32 JoinCount = PointCount - 2;
-  f32 WierdOffset = 300.0f;
   for(u32 Point=0; Point<PointCount;Point++)
   {
     Assert(PointList[Point].z == 0.5f);
-    PointList[Point] *= AppState->MeterToPixels;
-    PointList[Point] = PointList[Point] + WierdOffset;
+    PointList[Point] = Scale(PointList[Point], Camera->UnitToPixels);
+    PointList[Point] = Add(PointList[Point], Scale(Camera->Dim, 0.5));
   }
   
   v3f JoinVerts  [16 + 1] = {0};
@@ -934,25 +850,25 @@ void DrawLine(renderer *Renderer,
   MemoryCopy(JoinVerts, sizeof(JoinVerts), LineVData+ArrayCount(LineMeshVerts), sizeof(JoinVerts));
   
   D3D11_MAPPED_SUBRESOURCE InstanceMap = { 0 };
-  Renderer->Context->Map(Renderer->LineVInstBuffer,
-                         0, D3D11_MAP_WRITE_DISCARD, 0,
-                         &InstanceMap);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->LineVInstBuffer,
+                          0, D3D11_MAP_WRITE_DISCARD, 0,
+                          &InstanceMap);
   MemoryCopy(PointList, sizeof(v3f)*PointCount, InstanceMap.pData, sizeof(v3f)*PointCount);
-  Renderer->Context->Unmap(Renderer->LineVInstBuffer, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->LineVInstBuffer, 0);
   
   D3D11_MAPPED_SUBRESOURCE Mapped = { 0 };
-  Renderer->Context->Map(Renderer->LineVBuffer,
-                         0, D3D11_MAP_WRITE_DISCARD, 0,
-                         &Mapped);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->LineVBuffer,
+                          0, D3D11_MAP_WRITE_DISCARD, 0,
+                          &Mapped);
   MemoryCopy(LineVData, sizeof(LineVData), Mapped.pData, sizeof(LineVData));
-  Renderer->Context->Unmap(Renderer->LineVBuffer, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->LineVBuffer, 0);
   
   ID3D11Buffer *VBuffers[2] = { Renderer->LineVBuffer, Renderer->LineVInstBuffer };
   UINT          VStrides[2] = { sizeof(v3f), sizeof(v3f)};
   UINT          VOffsets[2] = { 0, 0};
-  Renderer->Context->IASetVertexBuffers(0, 2, VBuffers, VStrides, VOffsets);
-  Renderer->Context->IASetInputLayout(Renderer->LineInputLayout);
-  Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+  ID3D11DeviceContext_IASetVertexBuffers(Renderer->Context, 0, 2, VBuffers, VStrides, VOffsets);
+  ID3D11DeviceContext_IASetInputLayout(Renderer->Context, Renderer->LineInputLayout);
+  ID3D11DeviceContext_IASetPrimitiveTopology(Renderer->Context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
   
   // NOTE(MIGUEL): This is only because this constant buffer isnt set to
   //               dynamic.(UpdateSubresource() call)
@@ -965,66 +881,64 @@ void DrawLine(renderer *Renderer,
   Renderer->ConstBufferHigh.JoinType  = 0;
   
   D3D11_MAPPED_SUBRESOURCE MappedHigh = { 0 };
-  Renderer->Context->Map(Renderer->CBHigh, 0,
-                         D3D11_MAP_WRITE_DISCARD,
-                         0, &MappedHigh);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0,
+                          D3D11_MAP_WRITE_DISCARD,
+                          0, &MappedHigh);
   MemoryCopy(&Renderer->ConstBufferHigh, sizeof(gpu_const_high),
              MappedHigh.pData, sizeof(gpu_const_high));
-  Renderer->Context->Unmap(Renderer->CBHigh, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0);
   
-  Renderer->Context->VSSetShader(Renderer->LineVShader, 0, 0);
+  ID3D11DeviceContext_VSSetShader(Renderer->Context, Renderer->LineVShader, 0, 0);
   // NOTE(MIGUEL): The first arg is register number of the buffer this means
   //               that if in the shader the CB has : register(b0) then it should
   //               be 0.
-  Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBLow);
-  Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBHigh);
-  
-  Renderer->Context->PSSetShader(Renderer->LinePShader, 0, 0);
-  Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
-  Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
-  
-  Renderer->Context->DrawInstanced(ArrayCount(LineMeshVerts), LineCount, 0, 0);
+  ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+  ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
+  ID3D11DeviceContext_PSSetShader(Renderer->Context, Renderer->LinePShader, 0, 0);
+  ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+  ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
+  ID3D11DeviceContext_DrawInstanced(Renderer->Context, ArrayCount(LineMeshVerts), LineCount, 0, 0);
   
   //-
   D3D11_MAPPED_SUBRESOURCE JIMapped = { 0 };
-  Renderer->Context->Map(Renderer->LineIBuffer,
-                         0, D3D11_MAP_WRITE_DISCARD,
-                         0, &JIMapped);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->LineIBuffer,
+                          0, D3D11_MAP_WRITE_DISCARD,
+                          0, &JIMapped);
   MemoryCopy( JoinIndeces, sizeof(u16)*JoinIndexCount,
              JIMapped.pData, sizeof(u16)*JoinIndexCount);
-  Renderer->Context->Unmap(Renderer->LineIBuffer, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->LineIBuffer, 0);
   
   Renderer->ConstBufferHigh.Time = (f32)AppState->Time;
   Renderer->ConstBufferHigh.Color  = Color;
   Renderer->ConstBufferHigh.Width  = LineWidth;
   Renderer->ConstBufferHigh.JoinType  = 1;
   
-  Renderer->Context->Map(Renderer->CBHigh, 0,
-                         D3D11_MAP_WRITE_DISCARD,
-                         0, &MappedHigh);
+  ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0,
+                          D3D11_MAP_WRITE_DISCARD,
+                          0, &MappedHigh);
   MemoryCopy( &Renderer->ConstBufferHigh, sizeof(gpu_const_high), 
              MappedHigh.pData, sizeof(gpu_const_high));
-  Renderer->Context->Unmap(Renderer->CBHigh, 0);
+  ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0);
   
   ID3D11Buffer *JVBuffers[2] = { Renderer->LineVBuffer, Renderer->LineVInstBuffer };
   UINT          JVStrides[2] = { sizeof(v3f), sizeof(v3f)};
   UINT          JVOffsets[2] = { sizeof(LineMeshVerts), 0};
   
-  Renderer->Context->IASetVertexBuffers(0, 2, JVBuffers, JVStrides, JVOffsets);
-  Renderer->Context->IASetInputLayout(Renderer->LineInputLayout);
-  Renderer->Context->IASetIndexBuffer(Renderer->LineIBuffer, DXGI_FORMAT_R16_UINT, 0 );
-  Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+  ID3D11DeviceContext_IASetVertexBuffers(Renderer->Context, 0, 2, JVBuffers, JVStrides, JVOffsets);
+  ID3D11DeviceContext_IASetInputLayout(Renderer->Context, Renderer->LineInputLayout);
+  ID3D11DeviceContext_IASetIndexBuffer(Renderer->Context, Renderer->LineIBuffer, DXGI_FORMAT_R16_UINT, 0 );
+  ID3D11DeviceContext_IASetPrimitiveTopology(Renderer->Context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
   
-  Renderer->Context->VSSetShader(Renderer->LineVShader, 0, 0);
-  Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBLow);
-  Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBHigh);
+  ID3D11DeviceContext_VSSetShader(Renderer->Context, Renderer->LineVShader, 0, 0);
+  ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+  ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
   
-  Renderer->Context->PSSetShader(Renderer->LinePShader, 0, 0);
-  Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
-  Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
-  Renderer->Context->RSSetState(Renderer->Rasterizer);
+  ID3D11DeviceContext_PSSetShader(Renderer->Context, Renderer->LinePShader, 0, 0);
+  ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+  ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
+  ID3D11DeviceContext_RSSetState(Renderer->Context, Renderer->Rasterizer);
   
-  Renderer->Context->DrawIndexedInstanced(JoinIndexCount, JoinCount, 0, 0, 0);
+  ID3D11DeviceContext_DrawIndexedInstanced(Renderer->Context, JoinIndexCount, JoinCount, 0, 0, 0);
   
   return;
 }
@@ -1041,62 +955,57 @@ Render(renderer *Renderer, app_memory *AppMemory)
     if(g_WindowResized || !AppState->IsInitialized)
     {
       
-      m4f Proj = M4fOrtho(0.0f, (f32)g_WindowDim.Width, 0.0f,
-                          (f32)g_WindowDim.Height, 0.0f, 100.0f);
+      m4f Proj = Orthom4f(0.0f, (f32)g_WindowDim.x, 0.0f,
+                          (f32)g_WindowDim.y, 0.0f, 100.0f);
       
-      m4f View = M4fViewport(V2f((f32)g_WindowDim.Width,
-                                 (f32)g_WindowDim.Height)); 
+      m4f View = Viewportm4f(V2f((f32)g_WindowDim.x,
+                                 (f32)g_WindowDim.y)); 
       Renderer->ConstBufferLow.Proj    = Proj;
       Renderer->ConstBufferLow.View    = View;
-      Renderer->ConstBufferLow.Res    = {(f32)g_WindowDim.Width, (f32)g_WindowDim.Height};
+      Renderer->ConstBufferLow.Res    = V2f((f32)g_WindowDim.x, (f32)g_WindowDim.y);
       
       
-      Renderer->Context->OMSetRenderTargets(0, 0, 0);
-      Renderer->RenderTargetView->Release();
-      Renderer->SwapChain->ResizeBuffers(0,
-                                         (u32)g_WindowDim.Width,
-                                         (u32)g_WindowDim.Height,
-                                         DXGI_FORMAT_UNKNOWN, 0);
+      ID3D11DeviceContext_OMSetRenderTargets(Renderer->Context, 0, 0, 0);
+      ID3D11RenderTargetView_Release(Renderer->RenderTargetView);
+      IDXGISwapChain1_ResizeBuffers(Renderer->SwapChain, 0,
+                                    (u32)g_WindowDim.x,
+                                    (u32)g_WindowDim.y,
+                                    DXGI_FORMAT_UNKNOWN, 0);
       
-      ID3D11Texture2D        *BackBufferTexture;
-      Renderer->SwapChain->GetBuffer(0,__uuidof(ID3D11Texture2D),
-                                     (LPVOID *)&BackBufferTexture);
+      ID3D11Texture2D* Backbuffer;
+      IDXGISwapChain1_GetBuffer(Renderer->SwapChain, 0, &IID_ID3D11Texture2D, &Backbuffer);
+      ID3D11Device_CreateRenderTargetView(Renderer->Device, (ID3D11Resource*)Backbuffer, NULL, &Renderer->RenderTargetView);
+      ID3D11Texture2D_Release(Backbuffer);
       
-      Renderer->Device->CreateRenderTargetView(BackBufferTexture, 0,
-                                               &Renderer->RenderTargetView);
-      BackBufferTexture->Release();
-      
-      Renderer->Context->OMSetRenderTargets(1, &Renderer->RenderTargetView, 0);
+      ID3D11DeviceContext_OMSetRenderTargets(Renderer->Context, 1, &Renderer->RenderTargetView, 0);
       
       D3D11_MAPPED_SUBRESOURCE MappedConst = { 0 };
-      Renderer->Context->Map(Renderer->CBLow, 0,
-                             D3D11_MAP_WRITE_DISCARD,
-                             0, &MappedConst);
+      ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->CBLow, 0,
+                              D3D11_MAP_WRITE_DISCARD,
+                              0, &MappedConst);
       
       MemoryCopy(&Renderer->ConstBufferLow, sizeof(gpu_const_low), MappedConst.pData, sizeof(gpu_const_low));
-      Renderer->Context->Unmap(Renderer->CBLow, 0);
+      ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->CBLow, 0);
       
       g_WindowResized = 0;
     }
     
-    
-    Renderer->Context->OMSetRenderTargets(1, &Renderer->RenderTargetView, 0);
+    ID3D11DeviceContext_OMSetRenderTargets(Renderer->Context, 1, &Renderer->RenderTargetView, 0);
     
     D3D11_VIEWPORT Viewport;
     Viewport.TopLeftY = 0;
     Viewport.TopLeftX = 0;
-    Viewport.Width  = (f32)g_WindowDim.Width ;
     Viewport.MinDepth  = 0;
     Viewport.MaxDepth  = 0;
-    Viewport.Width  = (f32)g_WindowDim.Width ;
-    Viewport.Height = (f32)g_WindowDim.Height;
+    Viewport.Width  = (f32)g_WindowDim.x;
+    Viewport.Height = (f32)g_WindowDim.y;
     
-    Renderer->Context->RSSetViewports(1, &Viewport );
+    ID3D11DeviceContext_RSSetViewports(Renderer->Context, 1, &Viewport );
     
     
     v4f ClearColor = V4f(0.1f, 0.1f, 0.12f, 1.0f);
     
-    Renderer->Context->ClearRenderTargetView(Renderer->RenderTargetView, ClearColor.c);
+    ID3D11DeviceContext_ClearRenderTargetView(Renderer->Context, Renderer->RenderTargetView, ClearColor.e);
     
 #if 1
     render_buffer *RenderBuffer = &Renderer->RenderBuffer;
@@ -1129,29 +1038,26 @@ Render(renderer *Renderer, app_memory *AppMemory)
           MemorySet(0, &Renderer->ConstBufferHigh, sizeof(Renderer->ConstBufferHigh));
           if(IsText)
           {
-#if 1
+#if 0
             //ASSERT(0);
-            Renderer->TextTexResource->Release();
-            Renderer->TextTexView->Release();
-            Renderer->TextSamplerState->Release();
+            ID3D11Texture2D_Release(Renderer->TextTexResource);
+            ID3D11ShaderResourceView_Release(Renderer->TextTexView);
+            ID3D11SamplerState_Release(Renderer->TextSamplerState);
+            
             D3D11InitTextureMapping(Renderer,
                                     &Renderer->TextTexResource,
                                     DXGI_FORMAT_R8_UNORM,
                                     &Renderer->TextTexView,
                                     &Renderer->TextSamplerState,
                                     1, &BitmapData);
-            
             IsTextured = 1;
-            
             // NOTE(MIGUEL): High Update Frequency
-            m4f Trans  = M4fTranslate(RenderEntry->Pos);
-            m4f Rotate = M4fRotate2D(CosSin.x, CosSin.y);
-            m4f Scale  = M4fScale   (RenderEntry->Dim.x,
-                                     RenderEntry->Dim.y, 1.0f);
-            World  = Trans * Rotate * Scale;
-            
-            Renderer->Context->PSSetShaderResources(0, 1, &Renderer->TextTexView);
-            Renderer->Context->PSSetSamplers       (0, 1, &Renderer->TextSamplerState);
+            m4f T = Translatem4f(RenderEntry->Pos);
+            m4f R = Rotatem4f(CosSin.x, CosSin.y);
+            m4f S = Scalem4f(RenderEntry->Dim.x, RenderEntry->Dim.y, 1.0f);
+            World  = Mult(T, Mult(R, S));
+            ID3D11DeviceContext_PSSetShaderResources(Renderer->Context, 0, 1, &Renderer->TextTexView);
+            ID3D11DeviceContext_PSSetSamplers       (Renderer->Context, 0, 1, &Renderer->TextSamplerState);
 #endif
             
           }
@@ -1161,8 +1067,8 @@ Render(renderer *Renderer, app_memory *AppMemory)
             //               that disallows me the use the V3f() initializer. investigate it
             // TODO(MIGUEL): Wall verts get compressed to a point for some reason. Thats why 
             //               Wall quads arent visable. Fix it.
-            v3f PixelSpacePos = RenderEntry->Pos*AppState->MeterToPixels;
-            v3f PixelSpaceDim = RenderEntry->Dim*AppState->MeterToPixels;
+            v3f PixelSpacePos = Scale(RenderEntry->Pos, RenderEntry->Camera->UnitToPixels);
+            v3f PixelSpaceDim = Scale(RenderEntry->Dim, RenderEntry->Camera->UnitToPixels);
             if(IsUI)
             {
               PixelSpacePos = RenderEntry->Pos;
@@ -1170,22 +1076,18 @@ Render(renderer *Renderer, app_memory *AppMemory)
             }
             else
             {
-              PixelSpacePos.x+=WierdOffset;
-              PixelSpacePos.y+=WierdOffset;
+              PixelSpacePos = Add(PixelSpacePos, Scale(RenderEntry->Camera->Dim, 0.5));
             }
-            
             
             Renderer->ConstBufferHigh.PixelPos  = PixelSpacePos;
             // NOTE(MIGUEL): High Update Frequency
-            m4f Trans  = M4fTranslate(PixelSpacePos);
-            m4f Rotate = M4fRotate2D(CosSin.x, CosSin.y);
-            m4f Scale  = M4fScale   (PixelSpaceDim.x,
-                                     PixelSpaceDim.y, 
-                                     PixelSpaceDim.z);
-            World  = Trans * Rotate * Scale ;
+            m4f T = Translatem4f(PixelSpacePos);
+            m4f R = Rotatem4f(CosSin.x, CosSin.y);
+            m4f S = Scalem4f(PixelSpaceDim.x,
+                             PixelSpaceDim.y, 
+                             PixelSpaceDim.z);
+            World = Mult(T, Mult(R, S));
           }
-          
-          
           // NOTE(MIGUEL): Sets the Model and How to Shade it
           u32 Stride[] = {sizeof(vertex)};
           u32 Offset[] = { 0 };
@@ -1193,49 +1095,46 @@ Render(renderer *Renderer, app_memory *AppMemory)
           // NOTE(MIGUEL): This is only because this constant buffer isnt set to
           //               dynamic.(UpdateSubresource() call)
           // TODO(MIGUEL): Create a compiled path for a dynamic constant buffer
-          
-          
-          Renderer->Context->IASetVertexBuffers(0, 1, &Renderer->QuadVBuffer, Stride, Offset);
-          Renderer->Context->IASetInputLayout(Renderer->InputLayout);
-          Renderer->Context->IASetIndexBuffer(Renderer->QuadIBuffer, DXGI_FORMAT_R16_UINT, 0 );
-          Renderer->Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-          
+          ID3D11DeviceContext_IASetVertexBuffers(Renderer->Context, 0, 1, &Renderer->QuadVBuffer, Stride, Offset);
+          ID3D11DeviceContext_IASetInputLayout(Renderer->Context, Renderer->InputLayout);
+          ID3D11DeviceContext_IASetIndexBuffer(Renderer->Context, Renderer->QuadIBuffer, DXGI_FORMAT_R16_UINT, 0 );
+          ID3D11DeviceContext_IASetPrimitiveTopology(Renderer->Context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
           Renderer->ConstBufferHigh.Time   = (f32)AppState->Time;
           Renderer->ConstBufferHigh.Color   = Color;
           Renderer->ConstBufferHigh.World  = World;
           Renderer->ConstBufferHigh.IsTextured  = IsTextured;
           
           D3D11_MAPPED_SUBRESOURCE QuadVBufferMap = { 0 };
-          Renderer->Context->Map(Renderer->QuadVBuffer, 0,
-                                 D3D11_MAP_WRITE_DISCARD,
-                                 0, &QuadVBufferMap);
+          ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->QuadVBuffer, 0,
+                                  D3D11_MAP_WRITE_DISCARD,
+                                  0, &QuadVBufferMap);
           MemoryCopy(QuadMeshVerts, sizeof(QuadMeshVerts), QuadVBufferMap.pData, sizeof(QuadMeshVerts));
-          Renderer->Context->Unmap(Renderer->QuadVBuffer, 0);
+          ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->QuadVBuffer, 0);
           
           D3D11_MAPPED_SUBRESOURCE QuadIBufferMap = { 0 };
-          Renderer->Context->Map(Renderer->QuadIBuffer, 0,
-                                 D3D11_MAP_WRITE_DISCARD,
-                                 0, &QuadIBufferMap);
+          ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->QuadIBuffer, 0,
+                                  D3D11_MAP_WRITE_DISCARD,
+                                  0, &QuadIBufferMap);
           MemoryCopy(QuadMeshIndices, sizeof(QuadMeshIndices), QuadIBufferMap.pData, sizeof(QuadMeshIndices));
-          Renderer->Context->Unmap(Renderer->QuadIBuffer, 0);
+          ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->QuadIBuffer, 0);
           
           D3D11_MAPPED_SUBRESOURCE MappedConst = { 0 };
-          Renderer->Context->Map(Renderer->CBHigh, 0,
-                                 D3D11_MAP_WRITE_DISCARD,
-                                 0, &MappedConst);
+          ID3D11DeviceContext_Map(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0,
+                                  D3D11_MAP_WRITE_DISCARD,
+                                  0, &MappedConst);
           MemoryCopy(&Renderer->ConstBufferHigh, sizeof(gpu_const_high), MappedConst.pData, sizeof(gpu_const_high));
-          Renderer->Context->Unmap(Renderer->CBHigh, 0);
+          ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->CBHigh, 0);
           
-          Renderer->Context->VSSetShader(Renderer->VertexShader, 0, 0);
-          Renderer->Context->VSSetConstantBuffers(0, 1, &Renderer->CBLow);
-          Renderer->Context->VSSetConstantBuffers(1, 1, &Renderer->CBHigh);
-          Renderer->Context->PSSetShader(Renderer->PixelShader , 0, 0);
-          Renderer->Context->PSSetConstantBuffers(0, 1, &Renderer->CBLow);
-          Renderer->Context->PSSetConstantBuffers(1, 1, &Renderer->CBHigh);
-          //Renderer->Context->PSSetShaderResources(0, 1, &Renderer->SmileyTexView);
-          //Renderer->Context->PSSetSamplers       (0, 1, &Renderer->SmileySamplerState);
+          ID3D11DeviceContext_VSSetShader(Renderer->Context, Renderer->VertexShader, 0, 0);
+          ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+          ID3D11DeviceContext_VSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
+          ID3D11DeviceContext_PSSetShader(Renderer->Context, Renderer->PixelShader , 0, 0);
+          ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 0, 1, &Renderer->CBLow);
+          ID3D11DeviceContext_PSSetConstantBuffers(Renderer->Context, 1, 1, &Renderer->CBHigh);
+          //Renderer->Context->PSSetShaderResources(Renderer->Context0, 1, &Renderer->SmileyTexView);
+          //Renderer->Context->PSSetSamplers       (Renderer->Context0, 1, &Renderer->SmileySamplerState);
           
-          Renderer->Context->DrawIndexed(ArrayCount(QuadMeshIndices), 0, 0);
+          ID3D11DeviceContext_DrawIndexed(Renderer->Context, ArrayCount(QuadMeshIndices), 0, 0);
 #endif
         }break;
         case RenderType_line:
@@ -1248,13 +1147,13 @@ Render(renderer *Renderer, app_memory *AppMemory)
           // TODO(MIGUEL): Implement this in the shader
           //DrawLine(Renderer, AppState, Line->Width, Line->PointData, Line->PointCount,
           //v4f32Init(0.0f, 0.0f, 0.0f, 1.0f));
-          DrawLine(Renderer, AppState, ScaledLineWidth,
+          DrawLine(Renderer, AppState, RenderEntry->Camera, ScaledLineWidth,
                    Line->PointData, Line->PointCount, Line->Color);
 #endif
         } break;
         case RenderType_point:
         {
-#if 1
+#if 0
           u8 *DataSegment = RenderEntry->Data;
           size_t DataSegmentReadByteCount = 0;
           render_point PointData = {0};
@@ -1274,7 +1173,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
     }
 #endif
     //~/FLIP
-    Renderer->SwapChain->Present(0 , 0);
+    IDXGISwapChain1_Present(Renderer->SwapChain, 0 , 0);
   }
   
   if(GlobalDebugState)
@@ -1295,7 +1194,7 @@ b32 LoadShader(renderer *Renderer,
                u32 ElemCount,
                HANDLE ShaderCodeHandle,
                size_t ShaderFileSize,
-               memory_arena *AssetLoadingArena)
+               arena *AssetLoadingArena)
 {
   HRESULT Result;
   
@@ -1311,44 +1210,40 @@ b32 LoadShader(renderer *Renderer,
   u8 *ShaderCode = ArenaPushArray(AssetLoadingArena,
                                   ShaderFileSize, u8);
   
-  ReadFile(ShaderCodeHandle, ShaderCode, ShaderFileSize, 0, 0);
+  
+  ReadFile(ShaderCodeHandle, ShaderCode, SafeTruncateu64(ShaderFileSize), 0, 0);
   CloseHandle(ShaderCodeHandle);
   
   Result = D3DCompile(ShaderCode, ShaderFileSize,
                       0, 0, 0, "VS_Main", "vs_4_0", ShaderFlags, 0,
                       &VertexShaderBuffer, &ErrorBuffer);
-  
   if(FAILED(Result))
   {
-    OutputDebugString((LPCSTR)ErrorBuffer->GetBufferPointer());
-    
+    OutputDebugString((LPCSTR)ID3D10Blob_GetBufferPointer(ErrorBuffer));
     if(ErrorBuffer != 0)
     {
-      ErrorBuffer->Release();
-      
-      return false;
+      ID3D10Blob_Release(ErrorBuffer);
+      return FALSE;
     }
   }
-  
-  Result = Renderer->Device->CreateVertexShader(VertexShaderBuffer->GetBufferPointer(),
-                                                VertexShaderBuffer->GetBufferSize(), 0,
-                                                NewVertexShader);
+  Result = ID3D11Device_CreateVertexShader(Renderer->Device,
+                                           ID3D10Blob_GetBufferPointer(VertexShaderBuffer),
+                                           ID3D10Blob_GetBufferSize(VertexShaderBuffer),
+                                           NULL, NewVertexShader);
   
   if(FAILED(Result))
   {
-    if(VertexShaderBuffer) VertexShaderBuffer->Release();
-    
-    return false;
+    ID3D10Blob_Release(VertexShaderBuffer);
+    return FALSE;
   }
   
+  Result = ID3D11Device_CreateInputLayout(Renderer->Device, ElemDesc,
+                                          ElemCount,
+                                          ID3D10Blob_GetBufferPointer(VertexShaderBuffer),
+                                          ID3D10Blob_GetBufferSize(VertexShaderBuffer),
+                                          InputLayout);
   
-  Result = Renderer->Device->CreateInputLayout(ElemDesc,
-                                               ElemCount,
-                                               VertexShaderBuffer->GetBufferPointer(),
-                                               VertexShaderBuffer->GetBufferSize(),
-                                               InputLayout);
-  
-  if(VertexShaderBuffer) VertexShaderBuffer->Release();
+  if(VertexShaderBuffer) ID3D10Blob_Release(VertexShaderBuffer);
   
   /// CREATE PIXEL SHADER
   
@@ -1369,29 +1264,21 @@ b32 LoadShader(renderer *Renderer,
   {
     if(ErrorBuffer != 0)
     {
-      ErrorBuffer->Release();
-      
-      return false;
+      ID3D10Blob_Release(ErrorBuffer);
+      return FALSE;
     }
   }
   
-  Result = Renderer->Device->CreatePixelShader(PixelShaderBuffer->GetBufferPointer(),
-                                               PixelShaderBuffer->GetBufferSize(), 0,
-                                               NewPixelShader);
-  
-  
-  if(PixelShaderBuffer) PixelShaderBuffer->Release();
-  
-  if(FAILED(Result))
-  {
-    
-    return false;
-  }
-  
-  return true; 
+  Result = ID3D11Device_CreatePixelShader(Renderer->Device,
+                                          ID3D10Blob_GetBufferPointer(PixelShaderBuffer),
+                                          ID3D10Blob_GetBufferSize(PixelShaderBuffer), 0,
+                                          NewPixelShader);
+  if(VertexShaderBuffer) ID3D10Blob_Release(PixelShaderBuffer);
+  if(FAILED(Result)) { return FALSE; }
+  return TRUE; 
 }
 
-void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
+void D3D11LoadResources(renderer *Renderer, arena *AssetLoadingArena)
 {
   HRESULT Result;
   
@@ -1408,9 +1295,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     LineVDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     LineVDesc.ByteWidth = sizeof(v3f) * 1049;
     
-    Result = Renderer->Device->CreateBuffer(&LineVDesc,
-                                            NULL,
-                                            &Renderer->LineVBuffer);
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &LineVDesc,
+                                       NULL,
+                                       &Renderer->LineVBuffer);
     
     Assert(!FAILED(Result));
     
@@ -1420,9 +1307,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     LineVInstDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     LineVInstDesc.ByteWidth = 256 * (2 * sizeof(v3f)); //for point a & b
     
-    Result = Renderer->Device->CreateBuffer(&LineVInstDesc,
-                                            NULL,
-                                            &Renderer->LineVInstBuffer);
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &LineVInstDesc,
+                                       NULL,
+                                       &Renderer->LineVInstBuffer);
     
     Assert(!FAILED(Result));
     
@@ -1432,9 +1319,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     LineIDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     LineIDesc.ByteWidth = 256 * sizeof(u16); //for point a & b
     
-    Result = Renderer->Device->CreateBuffer(&LineIDesc,
-                                            NULL,
-                                            &Renderer->LineIBuffer);
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &LineIDesc,
+                                       NULL,
+                                       &Renderer->LineIBuffer);
     
     Assert(!FAILED(Result));
     
@@ -1447,9 +1334,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     D3D11_SUBRESOURCE_DATA TriangleVertData = { 0 };
     TriangleVertData.pSysMem = TriangleMeshVerts;
     
-    Result = Renderer->Device->CreateBuffer(&TriangleVertDesc,
-                                            &TriangleVertData,
-                                            &Renderer->TriangleVBuffer );
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &TriangleVertDesc,
+                                       &TriangleVertData,
+                                       &Renderer->TriangleVBuffer );
     Assert(!FAILED(Result));
     
     /// QUAD
@@ -1469,9 +1356,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     D3D11_SUBRESOURCE_DATA QuadVertData = { 0 };
     QuadVertData.pSysMem = 0;
     */
-    Result = Renderer->Device->CreateBuffer(&QuadVertDesc,
-                                            0,
-                                            &Renderer->QuadVBuffer );
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &QuadVertDesc,
+                                       0,
+                                       &Renderer->QuadVBuffer );
     
     D3D11_BUFFER_DESC QuadIndexDesc = { 0 };
     QuadIndexDesc.Usage          = D3D11_USAGE_DYNAMIC;
@@ -1482,9 +1369,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     D3D11_SUBRESOURCE_DATA QuadIndexData = { 0 };
     QuadIndexData.pSysMem = QuadMeshIndices;
     
-    Result = Renderer->Device->CreateBuffer(&QuadIndexDesc,
-                                            &QuadIndexData,
-                                            &Renderer->QuadIBuffer );
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &QuadIndexDesc,
+                                       &QuadIndexData,
+                                       &Renderer->QuadIBuffer );
     Assert(!FAILED(Result));
     
     /// TEXT SQUARE
@@ -1501,9 +1388,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     D3D11_SUBRESOURCE_DATA TextSpriteVertData = { 0 };
     TextSpriteVertData.pSysMem = nullptr;
 #endif
-    Result = Renderer->Device->CreateBuffer(&TextSpriteVertDesc,
-                                            0,
-                                            &Renderer->TextSpriteVBuffer );
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &TextSpriteVertDesc,
+                                       0,
+                                       &Renderer->TextSpriteVBuffer );
     Assert(!FAILED(Result));
     
     D3D11_BUFFER_DESC TextSpriteIndexDesc = { 0 };
@@ -1514,9 +1401,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     
     D3D11_SUBRESOURCE_DATA TextSpriteIndexData = { 0 };
     TextSpriteIndexData.pSysMem = TextSpriteMeshIndices;
-    Result = Renderer->Device->CreateBuffer(&TextSpriteIndexDesc,
-                                            &TextSpriteIndexData,
-                                            &Renderer->TextSpriteIBuffer );
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &TextSpriteIndexDesc,
+                                       &TextSpriteIndexData,
+                                       &Renderer->TextSpriteIBuffer );
     Assert(!FAILED(Result));
   }
   
@@ -1536,9 +1423,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     GPUConstantsDesc.Usage          = D3D11_USAGE_DYNAMIC;
     GPUConstantsDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     GPUConstantsDesc.ByteWidth      = sizeof(gpu_const_high);
-    Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
-                                            0,
-                                            &Renderer->CBHigh);
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &GPUConstantsDesc,
+                                       0,
+                                       &Renderer->CBHigh);
     StaticAssert((sizeof(gpu_const_high)%16==0), D3D11_Const_buffer_not_a_multiple_of_16);
     Assert(!FAILED(Result));
     
@@ -1548,9 +1435,9 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
     GPUConstantsDesc.ByteWidth      = sizeof(gpu_const_low);
     GPUConstantsResource.pSysMem = &Renderer->ConstBufferLow;
     
-    Result = Renderer->Device->CreateBuffer(&GPUConstantsDesc,
-                                            &GPUConstantsResource,
-                                            &Renderer->CBLow);
+    Result = ID3D11Device_CreateBuffer(Renderer->Device, &GPUConstantsDesc,
+                                       &GPUConstantsResource,
+                                       &Renderer->CBLow);
     Assert(!FAILED(Result));
   }
   
@@ -1701,10 +1588,10 @@ void D3D11LoadResources(renderer *Renderer, memory_arena *AssetLoadingArena)
   RasterizerDesc.MultisampleEnable = 0;
   RasterizerDesc.AntialiasedLineEnable = 0;
   
-  Renderer->Device->CreateRasterizerState(&RasterizerDesc,
-                                          &Renderer->Rasterizer);
+  ID3D11Device_CreateRasterizerState(Renderer->Device, &RasterizerDesc,
+                                     &Renderer->Rasterizer);
   
-  u32 MemBlockSize = KILOBYTES(800);
+  u32 MemBlockSize = Kilobytes(800);
   ArenaInit(&Renderer->TextureArena, MemBlockSize, 
             VirtualAlloc(0, 
                          MemBlockSize ,
@@ -1718,7 +1605,7 @@ void D3D11HotLoadShader(renderer *Renderer,
                         ID3D11InputLayout  **InputLayout,
                         D3D11_INPUT_ELEMENT_DESC *ElemDesc,
                         u32 ElemDescCount,
-                        memory_arena *ShaderLoadingArena)
+                        arena *ShaderLoadingArena)
 {
   WIN32_FIND_DATAA *CurrentShaderFileInfo = &Renderer->CurrentShaderFileInfo;
   WIN32_FIND_DATAA  UpdatedShaderFileInfo = {0};
@@ -1734,8 +1621,8 @@ void D3D11HotLoadShader(renderer *Renderer,
       CurrentShaderFileInfo->ftLastWriteTime.dwHighDateTime)) 
   {
     
-    ID3D11VertexShader *NewVertexShader = nullptr;
-    ID3D11PixelShader  *NewPixelShader  = nullptr;
+    ID3D11VertexShader *NewVertexShader = NULL;
+    ID3D11PixelShader  *NewPixelShader  = NULL;
     
     if(Renderer->InUseShaderFileA)
     {
@@ -1764,8 +1651,8 @@ void D3D11HotLoadShader(renderer *Renderer,
                     ShaderFileSize,
                     ShaderLoadingArena))
       {
-        Renderer->VertexShader->Release();
-        Renderer->PixelShader->Release();
+        ID3D11VertexShader_Release(Renderer->VertexShader);
+        ID3D11PixelShader_Release(Renderer->PixelShader);
         
         Renderer->VertexShader = NewVertexShader;
         Renderer->PixelShader  = NewPixelShader;
@@ -1804,10 +1691,8 @@ void D3D11HotLoadShader(renderer *Renderer,
                     ShaderLoadingArena))
       {
         
-        Renderer->VertexShader->Release();
-        Renderer->PixelShader->Release();
-        
-        
+        ID3D11VertexShader_Release(Renderer->VertexShader);
+        ID3D11PixelShader_Release(Renderer->PixelShader);
         Renderer->VertexShader = NewVertexShader;
         Renderer->PixelShader  = NewPixelShader;
         
@@ -1828,7 +1713,7 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
                              ID3D11InputLayout  **InputLayout,
                              D3D11_INPUT_ELEMENT_DESC *ElemDesc,
                              u32 ElemDescCount,
-                             memory_arena *ShaderLoadingArena)
+                             arena *ShaderLoadingArena)
 {
   WIN32_FIND_DATAA *CurrentShaderFileInfo = &Renderer->CurrentShaderFileInfo;
   WIN32_FIND_DATAA  UpdatedShaderFileInfo = {0};
@@ -1844,8 +1729,8 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
       CurrentShaderFileInfo->ftLastWriteTime.dwHighDateTime)) 
   {
     
-    ID3D11VertexShader *NewVertexShader = nullptr;
-    ID3D11PixelShader  *NewPixelShader  = nullptr;
+    ID3D11VertexShader *NewVertexShader = NULL;
+    ID3D11PixelShader  *NewPixelShader  = NULL;
     
     if(Renderer->InUseShaderFileA)
     {
@@ -1874,11 +1759,8 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
                     ShaderFileSize,
                     ShaderLoadingArena))
       {
-        
-        Renderer->LineVShader->Release();
-        Renderer->LinePShader->Release();
-        
-        
+        ID3D11VertexShader_Release(Renderer->LineVShader);
+        ID3D11PixelShader_Release(Renderer->LinePShader);
         Renderer->LineVShader = NewVertexShader;
         Renderer->LinePShader  = NewPixelShader;
         
@@ -1916,8 +1798,8 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
                     ShaderLoadingArena))
       {
         
-        Renderer->LineVShader->Release();
-        Renderer->LinePShader->Release();
+        ID3D11VertexShader_Release(Renderer->LineVShader);
+        ID3D11PixelShader_Release(Renderer->LinePShader);
         
         
         Renderer->LineVShader = NewVertexShader;
@@ -1937,7 +1819,7 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
 }
 
 void
-D3D11LoadTextGlyphs(renderer *Renderer, const char * FontFileName, u32 MaxHeightInPixels, memory_arena *AssetLoadingArena)
+D3D11LoadTextGlyphs(renderer *Renderer, const char * FontFileName, u32 MaxHeightInPixels, arena *AssetLoadingArena)
 {
   if (FT_Init_FreeType(&FreeType))
   {
@@ -2023,7 +1905,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
 {
   renderer *Renderer = &g_Renderer;
   
-  memory_arena AssetLoadingArena;
+  arena AssetLoadingArena;
   
   ArenaInit(&AssetLoadingArena,
             AppMemory->TransientStorageSize,
@@ -2034,10 +1916,10 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   
   D3D11LoadTextGlyphs(Renderer, "..\\res\\cour.ttf", 40, &AssetLoadingArena);
   Renderer->RenderBuffer.GlyphMetrics = Renderer->GlyphMetrics;
-  ArenaDiscard(&AssetLoadingArena);
+  //ArenaDiscard(&AssetLoadingArena);
   
-  Renderer->SmileyTex = LoadBitmap("..\\res\\frown.bmp");
-  Renderer->TextTex   = LoadBitmap("..\\res\\text.bmp");
+  Renderer->SmileyTex = LoadBitmapData("..\\res\\frown.bmp");
+  Renderer->TextTex   = LoadBitmapData("..\\res\\text.bmp");
   
   // NOTE(MIGUEL): First
   D3D11InitTextureMapping(Renderer,
@@ -2063,11 +1945,11 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   win32_GetExeFileName(&g_winstate);
   
   char SimCodeDLLFullPathSource[WIN32_STATE_FILE_NAME_COUNT];
-  win32_BuildExePathFileName(&g_winstate, "physics_sim_blah.dll",
+  win32_BuildExePathFileName(&g_winstate, "app.dll",
                              sizeof(SimCodeDLLFullPathSource), SimCodeDLLFullPathSource);
   
   char SimCodeDLLFullPathTemp  [WIN32_STATE_FILE_NAME_COUNT];
-  win32_BuildExePathFileName(&g_winstate, "physics_sim_blah_temp.dll",
+  win32_BuildExePathFileName(&g_winstate, "app_temp.dll",
                              sizeof(SimCodeDLLFullPathTemp), SimCodeDLLFullPathTemp);
   
   char SimCodeDLLFullPathLock  [WIN32_STATE_FILE_NAME_COUNT];
@@ -2092,21 +1974,21 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   while (g_Running)
   {
     // NOTE(MIGUEL): Start Timer
-    AppState->WindowDim = V2f((f32)g_WindowDim.Width, (f32)g_WindowDim.Height);
+    AppState->WindowDim = V2f((f32)g_WindowDim.x, (f32)g_WindowDim.y);
     InitInput(&Input, Window);
     ProcessPendingMessages(&Input);
     
     RECT WindowDim;
     GetClientRect(Window, &WindowDim);
-    g_WindowDim.Width  = WindowDim.right  - WindowDim.left;
-    g_WindowDim.Height = WindowDim.bottom - WindowDim.top;
+    g_WindowDim.x  = WindowDim.right  - WindowDim.left;
+    g_WindowDim.y = WindowDim.bottom - WindowDim.top;
     
-    g_WindowResized = true;
+    g_WindowResized = TRUE;
     
     if(!gPause || gFrameStep)
     {
       QueryPerformanceCounter((LARGE_INTEGER *)&WorkStartTick);
-      memory_arena ShaderLoadingArena;
+      arena ShaderLoadingArena;
       
       ArenaInit(&ShaderLoadingArena,
                 AppMemory->TransientStorageSize,
@@ -2124,7 +2006,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
                               gLineVLayoutCount,
                               &ShaderLoadingArena);
       
-      ArenaDiscard(&ShaderLoadingArena);
+      //ArenaDiscard(&ShaderLoadingArena);
       
       FILETIME NewDLLWriteTime = win32_GetLastWriteTime(SimCodeDLLFullPathSource);
       {
@@ -2181,7 +2063,7 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   return;
 }
 
-void WinMainCRTStartup()
+void WinMainCRTStartup(void)
 {
   HWND Window = CreateOutputWindow();
   
@@ -2199,6 +2081,7 @@ void WinMainCRTStartup()
     
     AppMemory.MainBlock            = VirtualAlloc(BaseAddress, 
                                                   (size_t)AppMemory.MainBlockSize,
+                                                  
                                                   MEM_COMMIT | MEM_RESERVE,
                                                   PAGE_READWRITE);
     
@@ -2224,7 +2107,7 @@ void WinMainCRTStartup()
 }
 
 //~ CRT stuff
-extern "C" int _fltused = 0x9875;
+int _fltused = 0x9875;
 
 // NOTE(MIGUEL): Clearing large Amounts of data e.g ~4gb 
 //               results in a noticable slow down.

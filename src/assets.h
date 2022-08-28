@@ -3,9 +3,10 @@
 #ifndef PHYSICS_SIM_ASSETS_H
 #define PHYSICS_SIM_ASSETS_H
 
-#include "physics_sim_types.h"
-#include "physics_sim_math.h"
+#include "types.h"
+#include "math.h"
 
+typedef struct vertex vertex;
 struct vertex
 {
   v3f Pos;

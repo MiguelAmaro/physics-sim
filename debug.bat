@@ -3,7 +3,7 @@
 set OPTION=%1
 
 set DEBUG_FILE= .\debug\debug.rdbg
-set EXE= .\build\physics_sim.exe
+set EXE= .\build\win32_main.exe
 
 
 if "%OPTION%" equ "-rdbg" (goto :REMEDY)

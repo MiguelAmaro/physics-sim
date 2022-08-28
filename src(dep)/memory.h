@@ -8,9 +8,9 @@
 #define STB_SPRINTF_IMPLEMENTATION
 #include "stb_sprintf.h"
 //#include <stdarg.h>
-#include "physics_sim_types.h"
-#include "physics_sim_math.h"
-#include "physics_sim_platform.h"
+#include "types.h"
+#include "math.h"
+#include "platform.h"
 
 
 #define PERMANENT_STORAGE_SIZE (MEGABYTES(256))
@@ -35,7 +35,7 @@ struct app_memory
 };
 
 
-struct memory_arena
+struct arena
 {
   size_t  Size;
   size_t  Used;
@@ -77,7 +77,7 @@ static b32 Str8IsEqual(str8 a, str8 b)
 }
 
 str8
-Str8FormatFromArena(memory_arena *Arena, char const * Format, ...)
+Str8FormatFromArena(arena *Arena, char const * Format, ...)
 {
   str8 Result = {0};
   // NOTE(MIGUEL): UNSAFE FUNCTION!!! GOOD LUCK! ;)
@@ -132,7 +132,7 @@ void MemoryCopy(void *Src, size_t SrcSize, void *Dst, size_t DstSize)
 }
 
 void
-ArenaInit(memory_arena *Arena, size_t Size, void *BasePtr)
+ArenaInit(arena *Arena, size_t Size, void *BasePtr)
 {
   Arena->BasePtr = BasePtr;
   Arena->Size    = Size;
@@ -141,7 +141,7 @@ ArenaInit(memory_arena *Arena, size_t Size, void *BasePtr)
 }
 
 void
-ArenaDiscard(memory_arena *Arena)
+ArenaDiscard(arena *Arena)
 {
   // NOTE(MIGUEL): Clearing large Amounts of data e.g ~4gb 
   //               results in a noticable slow down.
@@ -154,7 +154,7 @@ ArenaDiscard(memory_arena *Arena)
 }
 
 void
-ArenaReset(memory_arena *Arena)
+ArenaReset(arena *Arena)
 {
   // NOTE(MIGUEL): Clearing large Amounts of data e.g ~4gb 
   //               results in a noticable slow down.
@@ -167,7 +167,7 @@ ArenaReset(memory_arena *Arena)
 #define ArenaPushArray( Arena, Count, Type) (Type *)MemoryArenaPushBlock(Arena, (Count) * sizeof(Type))
 #define ArenaZeroStruct(Instance          )         MemoryArenaZeroBlock(sizeof(Instance), &(Instance))
 inline void *
-MemoryArenaPushBlock(memory_arena *Arena, size_t Size)
+MemoryArenaPushBlock(arena *Arena, size_t Size)
 {
   Assert((Arena->Used + Size) <= Arena->Size);
   

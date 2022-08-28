@@ -3,6 +3,6 @@
 #ifndef PHYSICS_SIM_PLATFORM_H
 #define PHYSICS_SIM_PLATFORM_H
 
-#include "physics_sim_types.h"
+#include "types.h"
 
 #endif //PHYSICS_SIM_PLATFORM_H

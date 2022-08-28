@@ -1,10 +1,10 @@
-#ifndef PHYSICS_SIM_RENDERER
-#define PHYSICS_SIM_RENDERER
+#ifndef RENDERER
+#define RENDERER
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
-#include "physics_sim_math.h"
-#include "physics_sim_types.h"
+#include "math.h"
+#include "types.h"
 
 
 struct bitmapdata
@@ -121,7 +121,7 @@ struct render_buffer
   render_entry  Entries[65536];
   u32           EntryCount;
   u32           EntryMaxCount;
-  memory_arena *PixelArena;
+  arena *PixelArena;
   glyph_metrics *GlyphMetrics;
   
 };
@@ -169,7 +169,7 @@ struct renderer
   bitmapdata TextTex;
   
   render_buffer RenderBuffer;
-  memory_arena  TextureArena;
+  arena  TextureArena;
   
   ID3D11Buffer *CBHigh;
   ID3D11Buffer *CBLow;
@@ -309,4 +309,4 @@ void RenderCmdPushQuad(render_buffer *RenderBuffer, v3f Pos, v3f Dim, v3f CosSin
 
 
 
-#endif // PHYSICS_SIM_RENDERER
+#endif // RENDERER

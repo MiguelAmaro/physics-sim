@@ -1,5 +1,5 @@
-#include "physics_sim_blah.h"
-#include "physics_sim_assets.h"
+#include "app.h"
+#include "assets.h"
 #include "windows.h"
 
 #define QUADTREE_CAP (4)
@@ -32,7 +32,7 @@ static void SimInit(app_state *AppState)
 {
   AppState->MeterToPixels = 20.0f;
   // NOTE(MIGUEL): Sim Initialization
-  AppState->EntityCount    =   0;
+  AppState->EntityCount    =   10;
   AppState->EntityMaxCount = 256;
   
   // NOTE(MIGUEL): Entity Generation
@@ -55,6 +55,7 @@ static void SimInit(app_state *AppState)
   f32 SpaceHeight = 20.0f;
   
   Entity = EntityWallLeft;
+  
   Entity->Dim.x = CommonWidth;
   Entity->Dim.y = SpaceHeight + (CommonWidth * 2.0f);
   Entity->Dim.z = CommonWidth;
@@ -235,7 +236,7 @@ DrawPath(render_buffer *RenderBuffer, v3f *PointList, u32 PointCount, v4f Color)
 }
 
 void
-DrawVector(render_buffer *RenderBuffer, v3f Origin, v3f Vec, memory_arena *LineArena)
+DrawVector(render_buffer *RenderBuffer, v3f Origin, v3f Vec, arena *LineArena)
 {
   v3f *PointList = ArenaPushArray(LineArena, 2, v3f);
   
@@ -253,7 +254,7 @@ DrawVector(render_buffer *RenderBuffer, v3f Origin, v3f Vec, memory_arena *LineA
 }
 
 void
-DrawPerimeter(render_buffer *RenderBuffer, v3f Origin, r2f Rect, memory_arena *LineArena)
+DrawPerimeter(render_buffer *RenderBuffer, v3f Origin, r2f Rect, arena *LineArena)
 {
   v4f Color  = V4f(1.0f, 0.4f, 1.0f, 1.0f);
   u32 PointCount = 6;
@@ -275,7 +276,7 @@ DrawPerimeter(render_buffer *RenderBuffer, v3f Origin, r2f Rect, memory_arena *L
 }
 
 void
-DrawAABB(render_buffer *RenderBuffer, entity *Entity, memory_arena *LineArena)
+DrawAABB(render_buffer *RenderBuffer, entity *Entity, arena *LineArena)
 {
   v3f Origin = Entity->Pos;
   v3f Offset = Entity->Dim / 2.0f;
@@ -303,11 +304,11 @@ struct point_cluster
 {
   v3f *FirstPoint;
   u32 PointCount;
-  memory_arena *Arena;
+  arena *Arena;
   render_buffer *RenderBuffer;
 };
 
-point_cluster PointClusterInit(memory_arena *Arena, render_buffer *RenderBuffer)
+point_cluster PointClusterInit(arena *Arena, render_buffer *RenderBuffer)
 {
   point_cluster Result = {0};
   Result.FirstPoint = (v3f *)0;
@@ -375,7 +376,8 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
         
         v3f GlyphQuadPos = V3f(OrgX+Width*0.0f, OrgY+Height*0.0f, 0.5f);
         v3f GlyphQuadDim = V3f(GlyphMetrics.Dim.x*10.0f, GlyphMetrics.Dim.y*10.0f, 0.0f);
-        v3f CosSin = V3f(0.1, 0.0f, 0.0f);
+        // NOTE(MIGUEL): This is broken x should be 1.0f
+        v3f CosSin = V3f(0.1, 0.0, 0.0f);
         b32 IsText = 1;
         b32 IsUI = 1;
         if(RenderBuffer->EntryCount < RenderBuffer->EntryMaxCount)
@@ -405,7 +407,7 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
   return;
 }
 
-#include "physics_sim_ui.cpp"
+#include "ui.cpp"
 extern "C" SIM_UPDATE(Update)
 {
   //TIMED_BLOCK;
@@ -431,12 +433,12 @@ extern "C" SIM_UPDATE(Update)
   static f32 RotZ = 0.0f;
   RotZ += 0.2f;
   
-  memory_arena *TextArena = &AppState->TextArena;
-  memory_arena *LineArena = &AppState->LineArena;
-  memory_arena  UIArena;
+  arena *TextArena = &AppState->TextArena;
+  arena *LineArena = &AppState->LineArena;
+  arena  UIArena;
   ArenaInit(TextArena, KILOBYTES(20), AppMemory->TransientStorage);
   ArenaInit(LineArena, KILOBYTES(10000), (u8 *)AppMemory->TransientStorage + TextArena->Size);
-  ArenaInit(&UIArena,   KILOBYTES(10000), (u8 *)LineArena->BasePtr + LineArena->Size);
+  ArenaInit(&UIArena , KILOBYTES(10000), (u8 *)LineArena->BasePtr + LineArena->Size);
   
   //RenderCmdPushQuad(RenderBuffer, V3f(0.0, 0.0, 0.0f), V3f(4000.0f, 4000.0f, 1.0f), V3f(1.0f, 1.0f, 0.0f));
   str8 MsPerFrameLabel   = Str8FormatFromArena(TextArena, "MSPerFrame: %.2f \n", AppState->DeltaTimeMS);
@@ -659,12 +661,14 @@ extern "C" SIM_UPDATE(Update)
   }
   
   //~UI USAGE CODE
-  UICoreStateInit(&AppState->UIState, RenderBuffer, AppState->WindowDim, AppInput, UIArena);
+  
 #if 1
+#if 0
+  UIStateInit(&AppState->UIState, RenderBuffer, AppState->WindowDim, AppInput, UIArena);
   ui_block NewParent = {0};
   NewParent.Rect = R2f(0.0f, 0.0f, 200.0f, 28.0f);
   NewParent.Size[Axis_Y].Value = 30.0f;
-  NewParent.Color = V4f(0.0f, 0.0f, 0.0f, 1.0f);
+  NewParent.Color = V4f(0.0f, 0.0f, 0.0f, 1.0f);       
   UICoreParentStackPushBlock(NewParent);
   if(UIBuildButton("Open").Hover)
   {
@@ -677,6 +681,10 @@ extern "C" SIM_UPDATE(Update)
     UIBuildBanner();
     UIBuildBanner();
   }
+  
+  
+  UIBuildButton("No Open");
+#endif
 #else
   // NOTE(MIGUEL): My new interpretations of ryans ui Experimental
   // make block/widet (use parent stack to assign a parent)
@@ -686,17 +694,15 @@ extern "C" SIM_UPDATE(Update)
   // new block are responstible for assing themselves as the parent last child
   // what are the mechanisme for controlling weather the block gets pushed as a parent
   int KeyPointer = 0;
-  if(UIBuildNewButton("Open ###%1", MakeKey(&KeyPointer, 0)).Hover)
+  if(UIBuildNewButton("Open", UIMakeKey(&KeyPointer, 0)).Hover)
   {
-    UIBuildNewButton("Save", MakeKey(&KeyPointer, 1));
-    UIBuildNewButton("Save", MakeKey(&KeyPointer, 2));
-    UIBuildNewButton("Save", MakeKey(&KeyPointer, 3));
-    UIBuildNewButton("Save", MakeKey(&KeyPointer, 4));
+    UIBuildNewButton("Save", UIMakeKey(&KeyPointer, 1));
+    UIBuildNewButton("Save", UIMakeKey(&KeyPointer, 2));
+    UIBuildNewButton("Save", UIMakeKey(&KeyPointer, 3));
+    UIBuildNewButton("Save", UIMakeKey(&KeyPointer, 4));
   }
   
 #endif
-  
-  
   //~END UI USAGE CODE
   
   //END_TIMED_BLOCK(Update);
@@ -707,7 +713,7 @@ extern "C" SIM_UPDATE(Update)
   str8 UpdateCycleLabel = Str8FormatFromArena(TextArena, "Update Cycle Count: %I64d cycles | Hits: %d hits\n",
                                               AppState->Counter[DBG_CycleCounter_Update].CycleCount,
                                               AppState->Counter[DBG_CycleCounter_Update].HitCount);
-  DrawSomeText(RenderBuffer, UpdateCycleLabel, 20.f, V3f(10.f, 700.0f, 0.5f));
+  DrawSomeText(Render Buffer, UpdateCycleLabel, 20.f, V3f(10.f, 700.0f, 0.5f));
   str8 RendererCycleLabel = Str8FormatFromArena(TextArena, "Renderer Cycle Count: %I64d cycles | Hits: %d hits\n",
                                                 AppState->Counter[DBG_CycleCounter_Render].CycleCount,
                                                 AppState->Counter[DBG_CycleCounter_Render].HitCount);

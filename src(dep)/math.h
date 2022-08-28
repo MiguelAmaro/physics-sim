@@ -1,9 +1,9 @@
 /* date = September 20th 2021 7:46 pm */
 
-#ifndef PHYSICS_SIM_MATH_H
-#define PHYSICS_SIM_MATH_H
+#ifndef MATH_H
+#define MATH_H
 
-#include "physics_sim_types.h"
+#include "types.h"
 #include "float.h"
 #include <immintrin.h>
 #include "thirdparty\sse_mathisfun.h"
@@ -189,77 +189,33 @@ f32 Root(f32 Value)
 }
 
 //- VECTORS 
-
 union v2f
 {
-  struct
-  {
-    f32 x;
-    f32 y;
-  };
+  struct { f32 x; f32 y; };
   f32 c[2];
 };
-
 union v2s
 {
-  struct
-  {
-    s32 x;
-    s32 y;
-  };
+  struct { s32 x; s32 y; };
   s32 c[2];
 };
-
 union v3f
 {
-  struct
-  {
-    f32 x;
-    f32 y;
-    f32 z;
-  };
-  struct
-  {
-    f32 r;
-    f32 g;
-    f32 b;
-  };
-  struct
-  {
-    v2f xy;
-    f32    z;
-  };
+  struct { f32 x; f32 y; f32 z; };
+  struct { f32 r; f32 g; f32 b; };
+  struct { v2f xy; f32 z; };
   f32 c[3];
 };
-
 union v4f
 {
-  struct
-  {
-    f32 x;
-    f32 y;
-    f32 z;
-    f32 w;
-  };
-  struct
-  {
-    f32 r;
-    f32 g;
-    f32 b;
-    f32 a;
-  };
+  struct { f32 x; f32 y; f32 z; f32 w; };
+  struct { f32 r; f32 g; f32 b; f32 a; };
   f32 c[4];
 };
-
 //- RECTANGLES 
-
 union r2f
 {
-  struct
-  {
-    v2f min;
-    v2f max;
-  };
+  struct { v2f min; v2f max; };
   f32 e[2];
 };
 
@@ -304,11 +260,7 @@ union m4f
 //- VECTOR 2D 
 v2f operator +(v2f A, v2f B)
 {
-  v2f Result = { 0 };
-  
-  Result.x = A.x + B.x;
-  Result.y = A.y + B.y;
-  
+  v2f Result = { A.x + B.x, A.y + B.y };
   return Result;
 }
 
@@ -391,6 +343,9 @@ f32 V2fInner(v2f A, v2f B)
 
 //- VECTOR 3D 
 
+//v3f V3f(f32, v2f)
+//v3f V3f(v3f)
+//v3f V3f(v2f, f32)
 v3f V3f(f32 x, f32 y, f32 z)
 {
   v3f Result = { 0 };
@@ -850,7 +805,7 @@ M4fScale(f32 x, f32 y, f32 z)
 static m4f
 M4fRotate2D(f32 cos, f32 sin)
 {
-  m4f Result = M4fIdentity();
+  m4f Result = M4f8Identity();
   
   Result.r[0] = V4f( cos, -sin, 0.0f, 0.0f);
   Result.r[1] = V4f( sin,  cos, 0.0f, 0.0f);
@@ -974,4 +929,4 @@ M4fOrtho(f32 LeftPlane,
   return Result;
 }
 
-#endif // PHYSICS_SIM_MATH_H
+#endif // MATH_H
