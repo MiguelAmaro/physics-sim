@@ -42,6 +42,85 @@ void QtreeQueryRange(void)
   return;
 }
 
+void CreateMovableGroup(app_state *AppState )
+{
+  
+  // NOTE(MIGUEL): Moving Entities
+  u32 EntityIndex = 0;
+  f32 EntityDim = 1.0f;
+  u32 VectorTableSize = ArrayCount(NormalizedVectorTable);
+  
+  f32 TurnFraction= Golden32;
+  //u32 Resolution = 1;
+  f32 NumPoints = 10;
+  f32 Radius = 10.0f;
+  for(u32 Index=0; Index<(u32)NumPoints; Index++)
+  {
+    f32 Dist = SqrRoot((f32)Index/(NumPoints - 1.0f));
+    f32 Theta = 2.0f*Pi32*TurnFraction*(f32)Index;
+    
+    v3f Point = V3f(Dist*Cosine(Theta)*Radius,
+                    Dist*Sine  (Theta)*Radius, 0.0f); 
+    
+    
+    //for(u32 EntityIndex = 0; EntityIndex < EntitiesWanted; EntityIndex++)
+    f32 ClosetDistance = 0;
+    if(AppState->EntityCount>0)
+    {
+      v3f Delta = {0};
+      entity *TestEntity = AppState->Entities + (AppState->EntityCount-1);
+      for(u32 TestEntityIndex=0;
+          TestEntityIndex<AppState->EntityMaxCount;
+          TestEntityIndex++, TestEntity++)
+      {
+        Delta = Add(Scale(Point,Radius), Scale(TestEntity->Pos, -1.0));
+        ClosetDistance = Length(Delta);
+      }
+    }
+    
+    //if((ClosetDistance>EntityDim) &&
+    //(EntityIndex<EntitiesWanted) &&
+    entity *Entity   =  AppState->Entities;
+    if(AppState->EntityCount<AppState->EntityMaxCount)
+    {
+      Entity = AppState->Entities + AppState->EntityCount++;
+      
+      LARGE_INTEGER Counter;
+      QueryPerformanceCounter(&Counter);
+      u32 Random = Counter.LowPart;
+      
+      u32 SeedX = (Random + 4 * (EntityIndex << 3)) << 8;
+      u32 SeedY = (Random * (AppState->EntityCount << 23)) << 3;
+      f32 DirX = NormalizedVectorTable[SeedX % VectorTableSize];
+      f32 DirY = NormalizedVectorTable[SeedY % VectorTableSize];
+      
+      Entity->Pos.x =  Point.x;
+      Entity->Pos.y =  Point.y;
+      Entity->Pos.z =  0.0f;
+      
+      Entity->Dim.x = EntityDim;
+      Entity->Dim.y = EntityDim; 
+      Entity->Dim.z = 1.0f;
+      Assert(Entity->Dim.x == 1.0f &&
+             Entity->Dim.y == 1.0f);
+      Entity->Acc.x = 0.0f;
+      Entity->Acc.y = 0.0f;
+      Entity->Acc.z = 0.0f;
+      
+      // NOTE(MIGUEL): Is normalize broken ?
+      Entity->Vel = Normalize(V3f(DirX, DirY, 0.0f));
+      Entity->Vel.z = 0.0f;
+      
+      Entity->Type = Entity_Moves;
+      Entity->Exists = TRUE;
+      
+      EntityIndex++;
+    }
+  };
+  return;
+}
+
+
 static void SimInit(app_state *AppState)
 {
   AppState->MeterToPixels = 20.0f;
@@ -113,80 +192,7 @@ static void SimInit(app_state *AppState)
   Entity->Pos.z = 0.0f;
   Entity->Type = Entity_Wall;
   Entity->Exists = TRUE;
-  
-  // NOTE(MIGUEL): Moving Entities
-  u32 EntityIndex = 0;
-  f32 EntityDim = 1.0f;
-  u32 VectorTableSize = ArrayCount(NormalizedVectorTable);
-  
-  f32 TurnFraction= Golden32;
-  //u32 Resolution = 1;
-  f32 NumPoints = 10;
-  f32 Radius = 10.0f;
-  for(u32 Index=0; Index<(u32)NumPoints; Index++)
-  {
-    f32 Dist = SqrRoot((f32)Index/(NumPoints - 1.0f));
-    f32 Theta = 2.0f*Pi32*TurnFraction*(f32)Index;
-    
-    v3f Point = V3f(Dist*Cosine(Theta)*Radius,
-                    Dist*Sine  (Theta)*Radius, 0.0f); 
-    
-    
-    //for(u32 EntityIndex = 0; EntityIndex < EntitiesWanted; EntityIndex++)
-    f32 ClosetDistance = 0;
-    if(AppState->EntityCount>0)
-    {
-      v3f Delta = {0};
-      entity *TestEntity = AppState->Entities + (AppState->EntityCount-1);
-      for(u32 TestEntityIndex=0;
-          TestEntityIndex<AppState->EntityMaxCount;
-          TestEntityIndex++, TestEntity++)
-      {
-        Delta = Add(Scale(Point,Radius), Scale(TestEntity->Pos, -1.0));
-        ClosetDistance = Length(Delta);
-      }
-    }
-    
-    //if((ClosetDistance>EntityDim) &&
-    //(EntityIndex<EntitiesWanted) &&
-    
-    if(AppState->EntityCount<AppState->EntityMaxCount)
-    {
-      Entity = AppState->Entities + AppState->EntityCount++;
-      
-      LARGE_INTEGER Counter;
-      QueryPerformanceCounter(&Counter);
-      u32 Random = Counter.LowPart;
-      
-      u32 SeedX = (Random + 4 * (EntityIndex << 3)) << 8;
-      u32 SeedY = (Random * (AppState->EntityCount << 23)) << 3;
-      f32 DirX = NormalizedVectorTable[SeedX % VectorTableSize];
-      f32 DirY = NormalizedVectorTable[SeedY % VectorTableSize];
-      
-      Entity->Pos.x =  Point.x;
-      Entity->Pos.y =  Point.y;
-      Entity->Pos.z =  0.0f;
-      
-      Entity->Dim.x = EntityDim;
-      Entity->Dim.y = EntityDim; 
-      Entity->Dim.z = 1.0f;
-      Assert(Entity->Dim.x == 1.0f &&
-             Entity->Dim.y == 1.0f);
-      Entity->Acc.x = 0.0f;
-      Entity->Acc.y = 0.0f;
-      Entity->Acc.z = 0.0f;
-      
-      // NOTE(MIGUEL): Is normalize broken ?
-      Entity->Vel = Normalize(V3f(DirX, DirY, 0.0f));
-      Entity->Vel.z = 0.0f;
-      
-      Entity->Type = Entity_Moves;
-      Entity->Exists = TRUE;
-      
-      EntityIndex++;
-    }
-  };
-  Entity   =  AppState->Entities;
+  CreateMovableGroup(AppState);
   return;
 }
 
@@ -429,6 +435,23 @@ DrawSomeText(render_buffer *RenderBuffer, str8 Text, u32 HeightInPixels, v3f Pos
 
 void Collision(void)
 {
+  u32 Iteration = 0;
+  u32 MaxCollisonIterations = 4;
+  for(; Iteration < MaxCollisonIterations; Iteration++)
+  {
+    
+#if 0
+    
+    v3f32 *CollisionPoints = ArenaPushArray(&LineArena, MaxCollisonIterations, v3f32);
+    // NOTE(MIGUEL): 
+    CollisionPoints[Iteration] = V3f(Entity->Pos.x, Entity->Pos.y, 0.5);
+    DrawVector(RenderBuffer, Vel, Entity->Pos, &LineArena);
+    
+    u32 CollisionCount = Iteration;
+    v4f32 Color  = V4f(1.0f, 1.0f, 1.0f, 1.0f);
+    DrawPath(RenderBuffer, CollisionPoints, CollisionCount, Color);
+#endif
+  }
 #if 0
   if(TestEntity != Entity &&
      (TestEntity->Type == Entity_Wall ||
@@ -538,13 +561,49 @@ void Collision(void)
   return;
 }
 
+v3f WorldToroidalPos(i2f World, v3f Pos)
+{
+  //x and z may need to be changed to x and z
+  v3f Result = {0};
+  if     (Pos.x < World.minx) Result.x = World.maxx;
+  else if(Pos.x > World.maxx) Result.y = World.minx;
+  else   Result.x = Pos.x;
+  if     (Pos.y < World.miny) Result.y = World.maxy;
+  else if(Pos.y > World.maxy) Result.y = World.miny;
+  else    Result.y = Pos.y;
+  return Result;
+}
+
+v3f FlockAlign(entity *Boid, entity *Flock, u32 FlockMateCount)
+{
+  v3f Steer  = {0};
+  v3f AvgVel = {0};
+  u32 NeighborCount = 0;
+  foreach(FlockMateIndex, FlockMateCount)
+  {
+    entity *FlockMate = Flock + FlockMateIndex;
+    if(!((FlockMate->Exists == 1) && (FlockMate->Type == Entity_Moves))) continue;
+    
+    f32 Dist = Distance(Boid->Pos, FlockMate->Pos);
+    if((Dist < 10.0f) && !IsEqual(&FlockMate, &Boid, Ref(entity)))
+    {
+      AvgVel = Add(AvgVel, FlockMate->Vel);
+      NeighborCount++;
+    }
+  }
+  if(NeighborCount > 0)
+  {
+    v3f Alignment = Scale(AvgVel, 1.0f/NeighborCount);
+    Steer = Sub(Alignment, Boid->Vel);
+  }
+  return Steer;
+}
 
 //#include "ui.cpp"
 APIPROC SIM_UPDATE(Update)
 {
   //TIMED_BLOCK;
   //BEGIN_TIMED_BLOCK(Update);
-  app_state *AppState = (app_state *)AppMemory->PermanentStorage;
   GlobalDebugState = AppState;
   
   if(AppState->IsInitialized == FALSE)
@@ -569,8 +628,8 @@ APIPROC SIM_UPDATE(Update)
   arena *LineArena = &AppState->LineArena;
   arena  UIArena;
   arena  CameraArena;
-  ArenaInit(TextArena, Kilobytes(20), AppMemory->TransientStorage);
-  ArenaInit(LineArena, Kilobytes(10000), (u8 *)AppMemory->TransientStorage + TextArena->Size);
+  ArenaInit(TextArena, Kilobytes(20), Transient);
+  ArenaInit(LineArena, Kilobytes(10000), (u8 *)Transient + TextArena->Size);
   ArenaInit(&UIArena , Kilobytes(10000), (u8 *)LineArena->Base + LineArena->Size);
   ArenaInit(&CameraArena, sizeof(cam)*64, (u8 *)UIArena.Base + UIArena.Size);
   
@@ -582,8 +641,8 @@ APIPROC SIM_UPDATE(Update)
   
   
   f32 TurnFraction= Golden32;
-  f32 StartX = (4.0*-1.0)-0.5;
-  f32 StartY = (4.0*1.0)+0.5;
+  //f32 StartX = (4.0*-1.0)-0.5;
+  //f32 StartY = (4.0*1.0)+0.5;
   u32 NumPoints = 300;
   
   
@@ -607,88 +666,38 @@ APIPROC SIM_UPDATE(Update)
   }
   DrawPointCluster(&Cluster, PointCam);
   
-  entity   *Entity   =  AppState->Entities;
-  for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
+  entity *FirstEntity = AppState->Entities;
+  foreach(EntityIndex, AppState->EntityCount)
   {
+    entity *Entity = FirstEntity + EntityIndex;
     if(Entity->Type == Entity_Moves && Entity->Exists)
     {
-      // NOTE(MIGUEL): Speed is Meters/Second?
-      //v3f Drag  = {0.08f, 0.0f, 0.0f};
       
-      u32 MaxCollisonIterations = 4;
-      //f32 NormalizedCollisionPoint = 1.0f;
-      //f32 RemainingTravelDistance = Length(PosDelta);
-      //u32 ClosestEntityId = U32MAX;
-      //f32 ClosestEntityDist = 3.0f;
-      u32 NeighborCount    = 0;
-      v3f AlignVelAccum    = {0};
-      v3f CohesionPosAccum = {0};
-      u32 Iteration = 0;
-      for(; Iteration < MaxCollisonIterations; Iteration++)
-      {
-        entity *FlockMate = AppState->Entities;
-        for(u32 FlockMateIndex = 0;
-            FlockMateIndex < AppState->EntityCount;
-            FlockMateIndex++, FlockMate++)
-        {
-          f32 Dist = Distance(Entity->Pos, FlockMate->Pos);
-          if(Dist < 10.0f)
-          {
-            AlignVelAccum    = Add(AlignVelAccum   , FlockMate->Vel);
-            CohesionPosAccum = Add(CohesionPosAccum, FlockMate->Pos);
-            NeighborCount++;
-          }
-        }
-        f32 MaxSpeed = 0.001f;
-        v3f Acc   = Entity->Acc;
-        v3f Vel   = Entity->Vel;
-        
-        // BOIDS DATA
-        v3f AvgVel = Scale(AlignVelAccum   , 1.0f/NeighborCount);
-        v3f AvgPos = Scale(CohesionPosAccum, 1.0f/NeighborCount);
-        v3f Desired = Scale(Normalize(Sub(AvgPos, Entity->Pos)), MaxSpeed);
-        
-        //v3f Target = Sub()
-        v3f Steer  = Scale(Normalize(Sub(Vel, AvgVel)), MaxSpeed);
-        
-        // CALC POS DELTA
-        Vel = Normalize(Add(Desired, (Add(Vel, Steer))));
-        
-        v3f PosDelta =  Add(Scale(Acc, 0.5f * Sqr((f32)AppState->DeltaTimeMS)),
-                            Scale(Scale(Vel, MaxSpeed), (f32)AppState->DeltaTimeMS));
-        Entity->Vel = Normalize(Add(Scale(Acc,(f32)AppState->DeltaTimeMS), Vel));
-        
-        //APPLY MOVE
-        v3f WorldSpace = Scale(V3f(AppState->WindowDim.x, AppState->WindowDim.y, 0.0f), 1.0f/AppState->MeterToPixels);
-        i2f Viewport   = I2fCenteredDim(WorldSpace.xy);
-        v3f NewPos = Add(Entity->Pos, PosDelta);
-        // TOROIDAL WORLD
-        NewPos.x = 
-          (NewPos.x < Viewport.minx)? Viewport.maxx-(Viewport.minx-NewPos.x):
-        (NewPos.x > Viewport.maxx)? Viewport.minx+(NewPos.x-Viewport.maxx):NewPos.x;
-        NewPos.y = 
-          (NewPos.y < Viewport.miny)? Viewport.maxy-(Viewport.miny-NewPos.y):
-        (NewPos.y > Viewport.maxy)? Viewport.miny+(NewPos.y-Viewport.maxy):NewPos.y;
-        Entity->Pos = NewPos;
-      }
+      f32 MaxSpeed = 0.0001f;
+      v3f Acc   = Entity->Acc;
+      v3f Vel   = Entity->Vel;
       
-#if 0
+      // BOIDS DATA
+      v3f Alignment = FlockAlign(Entity, AppState->Entities, AppState->EntityCount);
+      // CALC POS DELTA
+      v3f WorldSpace = Scale(V3f(AppState->WindowDim.x, AppState->WindowDim.y, 0.0f), 1.0f/AppState->MeterToPixels);
+      v3f PosDelta =  Add(Scale(Acc, 0.5f * Sqr((f32)AppState->DeltaTimeMS)),
+                          Scale(Scale(Vel, MaxSpeed), (f32)AppState->DeltaTimeMS));
+      //PosDelta = (Length(PosDelta) > WorldSpace.y)?Scale(Normalize(PosDelta), WorldSpace.y):PosDelta;
+      Entity->Vel = Normalize(Add(Scale(Acc,(f32)AppState->DeltaTimeMS), Entity->Vel));
+      Entity->Acc = Normalize(Alignment);
       
-      v3f32 *CollisionPoints = ArenaPushArray(&LineArena, MaxCollisonIterations, v3f32);
-      // NOTE(MIGUEL): 
-      CollisionPoints[Iteration] = V3f(Entity->Pos.x, Entity->Pos.y, 0.5);
-      DrawVector(RenderBuffer, Vel, Entity->Pos, &LineArena);
-      
-      u32 CollisionCount = Iteration;
-      v4f32 Color  = V4f(1.0f, 1.0f, 1.0f, 1.0f);
-      DrawPath(RenderBuffer, CollisionPoints, CollisionCount, Color);
-#endif
+      //APPLY MOVE
+      i2f Viewport = I2fCenteredDim(WorldSpace.xy);
+      v3f NewPos   = Add(Entity->Pos, PosDelta);
+      Entity->Pos  = WorldToroidalPos(Viewport, NewPos);
     }
   }
+  
   cam *EntityCam = CameraInit(&CameraArena, V3f(0.0, 0.0, 0.0), V3f(AppState->WindowDim.x, AppState->WindowDim.y, 0.0f), 20.0f);
-  Entity =  AppState->Entities;
-  for(u32 EntityIndex = 0; EntityIndex < AppState->EntityCount; EntityIndex++, Entity++)
+  foreach(EntityIndex, AppState->EntityCount)
   {
+    entity *Entity = FirstEntity + EntityIndex;
     if(Entity->Exists)
     {
       if(Entity->Type == Entity_Moves)
@@ -700,7 +709,6 @@ APIPROC SIM_UPDATE(Update)
       DrawAABB(RenderBuffer, EntityCam, Entity, LineArena);
       DrawRectDP(RenderBuffer, EntityCam, Entity->Pos,  Entity->Dim, Entity->Vel, V4f(0.0f, 0.7f,1.0f,1.0f));
     }
-    
   }
   
   //~UI USAGE CODE

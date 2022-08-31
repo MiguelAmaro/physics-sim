@@ -65,8 +65,8 @@ pushd build
 del %PROJECT_NAME%_blah.pdb > NUL 2> NUL
 rem echo WAITING FOR PDB > lock.tmp
 
-cl %MSVC_FLAGS% %MSVC_SEARCH_DIRS% %PROJECT_DIR%\src\app.c -Fm%app.map -DLL -LD ^
-/link %MSVC_LIBS% -map /MAPINFO:EXPORTS -PDB:%app.pdb -EXPORT:Update
+cl %MSVC_FLAGS% %MSVC_SEARCH_DIRS% %PROJECT_DIR%\src\app.c -Fmapp.map -LD ^
+/link %MSVC_LIBS% -DLL -map /MAPINFO:EXPORTS -PDB:app.pdb -EXPORT:Update
 rem del lock.tmp
 popd
 goto :eof
@@ -76,7 +76,8 @@ goto :eof
 rem  EXE
 echo ============================================================
 pushd build
-cl -nologo %MSVC_SEARCH_DIRS% %PROJECT_DIR%\src\test.cpp
+cl -nologo -std:c11 %MSVC_SEARCH_DIRS% %PROJECT_DIR%\src\test.c ^
+/link %MSVC_LIBS%
 popd
 goto :eof
 

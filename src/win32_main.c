@@ -1,6 +1,6 @@
-
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+//-/ MACROS
+#define PERMANENT_STORAGE_SIZE (Megabytes(256))
+#define TRANSIENT_STORAGE_SIZE (Gigabytes(  4))
 
 #define COBJMACROS
 #include <d3d11.h>
@@ -20,16 +20,10 @@
 #include "app.h"
 #include "assets.h"
 
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
 #include "memory.c"
 #include "string.c"
 #include "win32_core.c" //os.c
-
-global FT_Library FreeType;
-global FT_Face    Face;
+#include "font.h"
 
 /// SET INPUT LAYOUT
 global D3D11_INPUT_ELEMENT_DESC gVertexLayout[3] = { 0 };
@@ -37,39 +31,7 @@ global u32 gVertexLayoutCount = 3;
 global D3D11_INPUT_ELEMENT_DESC gLineVLayout[3] = { 0 };
 global u32 gLineVLayoutCount = 3;
 
-//-/ MACROS
-
-#define PERMANENT_STORAGE_SIZE (Megabytes(256))
-#define TRANSIENT_STORAGE_SIZE (Gigabytes(  4))
-
-#define WIN32_STATE_FILE_NAME_COUNT (MAX_PATH)
-
-
 //-/ TYPES
-
-typedef struct bit_scan_result bit_scan_result;
-struct bit_scan_result
-{
-  b32 Found;
-  u32 Index;
-};
-
-/// process meta data
-typedef struct win32_state win32_state;
-struct win32_state
-{
-  str8 ExeName;
-  str8 ExeDir;
-  u8   Buffer[WIN32_STATE_FILE_NAME_COUNT];
-};
-
-// Dep
-//struct win32_WindowDim
-//{
-//u32 Width;
-//u32 Height;
-//};
-//
 typedef struct buffer buffer;
 struct buffer
 {
@@ -78,126 +40,12 @@ struct buffer
   u32 BytesPerPixel;
   void *Data;
 };
-
 //-/ GLOBALS
-
-win32_state     g_winstate;
-renderer        g_Renderer;
-v2s             g_WindowDim; //(dep)
-b32             g_WindowResized;
-
-b32 g_Running  = TRUE;
-b32 gPause     = FALSE;
-b32 gFrameStep = TRUE;
-
+renderer g_Renderer;
+b32      g_Running  = TRUE;
+b32      gPause     = FALSE;
+b32      gFrameStep = TRUE;
 //-/ FUNCTIONS
-static u32
-S8Length(const char *String)
-{
-  u32 Count = 0;
-  
-  while(*String++) { ++Count; }
-  
-  return Count;
-}
-
-bit_scan_result
-FindLeastSignificantSetBit(u32 Value)
-{
-  bit_scan_result Result = {0};
-  
-  
-#if COMPILER_MSVC
-  Result.Found = _BitScanForward(&Result.Index, Value);
-#else
-  for(u32 Test = 0; Test < 32; ++Test)
-  {
-    if(Value & (1 << Test))
-    {
-      Result.Index = Test;
-      Result.Found = 1;
-      
-      break;
-    }
-  }
-  
-#endif
-  
-  return Result;
-}
-
-void InitInput(app_input *Input, HWND Window)
-{
-  MemorySet(0, Input->AlphaKeys, sizeof(Input->AlphaKeys));
-  MemorySet(0, Input->NavKeys, sizeof(Input->NavKeys));
-  POINT CursorPos;
-  GetCursorPos(&CursorPos);
-  ScreenToClient(Window, &CursorPos);
-  Input->MousePos.x = (f32)CursorPos.x;
-  Input->MousePos.y = (f32)CursorPos.y;
-  return;
-}
-
-static bitmapdata
-LoadBitmapData(const char *FileName)
-{
-  bitmapdata Result = { 0 };
-  LARGE_INTEGER FileSize;
-  HANDLE FileHandle = CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ,
-                                  0, OPEN_EXISTING, 0, 0);
-  GetFileSizeEx(FileHandle, &FileSize);
-  u32 FileSize32 = SafeTruncateu64(FileSize.QuadPart);
-  void *Block = VirtualAlloc(0, FileSize32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  Assert(Block);
-  if(FileSize32 > 0)
-  {
-    DWORD BytesRead;
-    if(ReadFile(FileHandle, Block, FileSize32, &BytesRead, 0) &&
-       (FileSize32 == BytesRead))
-    { }
-    else
-    {
-      // NOTE(MIGUEL): Failed file read!!!
-      VirtualFree(Block, 0, MEM_RELEASE);
-      Block = 0;
-    }
-    bitmapheader *Header = (bitmapheader *)Block;
-    u32 *Pixels = (u32 *)((u8 *)Block + Header->BitmapOffset);
-    Result.Pixels = (u8 *)Pixels;
-    Result.Width  = Header->Width;
-    Result.Height = Header->Height;
-    Result.BytesPerPixel = (Header->BitsPerPixel / 8);
-    if(Header->Compression > 0)
-    {
-      u32 RedMask   = Header->RedMask;
-      u32 GreenMask = Header->GreenMask;
-      u32 BlueMask  = Header->BlueMask;
-      u32 AlphaMask = ~(RedMask | GreenMask | BlueMask);
-      bit_scan_result RedShift   = FindLeastSignificantSetBit(RedMask  );
-      bit_scan_result GreenShift = FindLeastSignificantSetBit(GreenMask);
-      bit_scan_result BlueShift  = FindLeastSignificantSetBit(BlueMask );
-      bit_scan_result AlphaShift = FindLeastSignificantSetBit(AlphaMask);
-      Assert(  RedShift.Found);
-      Assert(GreenShift.Found);
-      Assert( BlueShift.Found);
-      Assert(AlphaShift.Found);
-      u32 *SrcDest = Pixels;
-      for(    s32 y = 0; y < Header->Height; y++)
-      {
-        for(s32 x = 0; x < Header->Width; x++)
-        {
-          u32 c = *SrcDest;
-          *SrcDest  = ((((c >> AlphaShift.Index) & 0xFF) << 24)|
-                       (((c >>   RedShift.Index) & 0xFF) << 16)|
-                       (((c >> GreenShift.Index) & 0xFF) <<  8)|
-                       (((c >>  BlueShift.Index) & 0xFF) <<  0));
-          SrcDest++;
-        }
-      }
-    }
-  }
-  return Result;
-}
 
 static void
 D3D11InitTextureMapping(renderer                 *Renderer,
@@ -244,7 +92,6 @@ D3D11InitTextureMapping(renderer                 *Renderer,
   
   return;
 }
-
 static void
 D3D11Release(renderer *Renderer)
 {
@@ -254,7 +101,6 @@ D3D11Release(renderer *Renderer)
   if(Renderer->Device          ) ID3D11Device_Release(Renderer->Device);
   return;
 }
-
 static b32
 D3D11Startup(HWND Window, renderer *Renderer)
 {
@@ -277,8 +123,8 @@ D3D11Startup(HWND Window, renderer *Renderer)
   
   DXGI_SWAP_CHAIN_DESC1 SwapChainDescription = {0};
   SwapChainDescription.BufferCount = 2; 
-  SwapChainDescription.Width  = g_WindowDim.x;
-  SwapChainDescription.Height = g_WindowDim.y;
+  SwapChainDescription.Width  = gState->WindowDim.x;
+  SwapChainDescription.Height = gState->WindowDim.y;
   SwapChainDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
   SwapChainDescription.BufferUsage        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
   SwapChainDescription.Scaling            = DXGI_SCALING_NONE;
@@ -331,147 +177,25 @@ D3D11Startup(HWND Window, renderer *Renderer)
   D3D11_VIEWPORT Viewport;
   Viewport.TopLeftX = 0.0f;
   Viewport.TopLeftY = 0.0f;
-  Viewport.Width  = (f32)g_WindowDim.x;
-  Viewport.Height = (f32)g_WindowDim.y;
+  Viewport.Width  = (f32)gState->WindowDim.x;
+  Viewport.Height = (f32)gState->WindowDim.y;
   Viewport.MinDepth = 0.0f;
   Viewport.MaxDepth = 1.0f;
   ID3D11DeviceContext_RSSetViewports(Renderer->Context, 1, &Viewport);
   return Result;
 }
 
-void PrintLastSystemError(void)
+typedef struct plugin plugin;
+struct plugin
 {
-  LPTSTR ErrorMsg;
-  uint32_t ErrorCode    = GetLastError();
-  uint32_t ErrorMsgLen = 0;
-  
-  ErrorMsgLen = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                               FORMAT_MESSAGE_FROM_SYSTEM     ,
-                               NULL                           ,
-                               ErrorCode                      ,
-                               MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                               (char *)&ErrorMsg, 0, NULL);
-  
-  OutputDebugStringA(ErrorMsg);
-  //MessageBox(0, ErrorMsg, "Warning", MB_OK);
-  
-  LocalFree(ErrorMsg);
-  
-  return;
-}
-
-void PrintSystemMsg(UINT WinMsg)
-{
-  LPTSTR MsgStr;
-  uint32_t MsgLen = 0;
-  
-  MsgLen = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                          FORMAT_MESSAGE_FROM_SYSTEM     ,
-                          NULL                           ,
-                          WinMsg   ,
-                          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                          (char *)&MsgStr, 0, NULL);
-  
-  OutputDebugStringA(MsgStr);
-  //MessageBox(0, ErrorMsg, "Warning", MB_OK);
-  
-  LocalFree(MsgStr);
-  
-  return;
-}
-
-static LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
-{
-  LRESULT Result = 0;
-  Result = DefWindowProcW(Window, Message, WParam, LParam);
-  return Result;
-}
-
-static HWND CreateOutputWindow(void)
-{
-  WNDCLASSEXW WindowClass = {0};
-  
-  WindowClass.cbSize        = sizeof(WindowClass);
-  WindowClass.lpfnWndProc   = &WindowProc;
-  WindowClass.style         = CS_HREDRAW | CS_VREDRAW;
-  WindowClass.hInstance     = GetModuleHandleW(NULL);
-  WindowClass.hIcon         = LoadIconA(NULL, IDI_APPLICATION);
-  WindowClass.hCursor       = LoadCursorA(NULL, IDC_ARROW);
-  WindowClass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-  WindowClass.lpszClassName = L"physicsim";
-  
-  
-  HWND Result = {0};
-  if(RegisterClassExW(&WindowClass))
-  {
-    // NOTE(casey): Martins says WS_EX_NOREDIRECTIONBITMAP is necessary to make
-    // DXGI_SWAP_EFFECT_FLIP_DISCARD "not glitch on window resizing", and since
-    // I don't normally program DirectX and have no idea, we're just going to
-    // leave it here :)
-    DWORD ExStyle = 0; //WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP;
-    
-    RECT WindowDim = { 0, 0, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT };
-    
-    // NOTE(MIGUEL): Is this correct? What about Client Rect?
-    AdjustWindowRect(&WindowDim,
-                     WS_OVERLAPPEDWINDOW,
-                     FALSE);
-    
-    g_WindowDim.x  = WindowDim.right  - WindowDim.left;
-    g_WindowDim.y = WindowDim.bottom - WindowDim.top;
-    
-    Result = CreateWindowExW(ExStyle,
-                             WindowClass.lpszClassName,
-                             L"Physics Simulation",
-                             WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                             DEFAULT_WINDOW_COORDX, DEFAULT_WINDOW_COORDY,
-                             g_WindowDim.x, g_WindowDim.y,
-                             0, 0, WindowClass.hInstance, 0);
-  }
-  
-  return Result;
-}
-
-void
-ProcessKeyboardMessage(button_state *NewState, b32 IsDown)
-{
-  if(NewState->EndedDown != IsDown)
-  {
-    NewState->EndedDown = IsDown;
-    ++NewState->HalfTransitionCount;
-  }
-  
-  return;
-}
-
-static FILETIME
-win32_GetLastWriteTime(char *FileName)
-{
-  FILETIME LastWriteTime = { 0 };
-  
-  WIN32_FILE_ATTRIBUTE_DATA FileInfo;
-  
-  if(GetFileAttributesEx((const char *)FileName,
-                         GetFileExInfoStandard,
-                         &FileInfo))
-  {
-    LastWriteTime = FileInfo.ftLastWriteTime;
-  }
-  
-  return LastWriteTime;
-}
-
-typedef struct win32_sim_code win32_sim_code;
-struct win32_sim_code
-{
-  HMODULE     SIM_DLL;
+  os_module   Module;
   SIM_Update *Update;
   b32         IsValid;
-  FILETIME    DLLLastWriteTime;
+  datetime LastWrite;
 };
 
-static void
-win32_GetExeFileName(win32_state *State)
+#if 0
+fn void win32_GetExeFileName(win32_state *State)
 {
   u32 TotalLength = GetModuleFileNameA(NULL,(LPSTR)State->Buffer, sizeof(State->Buffer));
   u8 *Dir = State->Buffer;
@@ -485,67 +209,42 @@ win32_GetExeFileName(win32_state *State)
   State->ExeDir  = Str8(Dir, TotalLength-Length);
   return;
 }
-
-static void
-win32_BuildExePathFileName(win32_state *State,
-                           char *FileName,
-                           size_t DestCount, char *Dest)
+#endif
+fn str8 BuildExePathFileName(os_state *State, char *FileName, arena *Arena)
 {
-  S8Concat(State->ExeDir.Length,
-           (char *)State->ExeDir.Data,
-           S8Length(FileName), FileName,
-           DestCount, Dest);
-  
-  return;
+  str8 Result = Str8Concat(State->ExeDir, Str8(FileName), Arena);
+  return Result;
 }
-
-
-static win32_sim_code
-win32_HotLoadSimCode(char *SourceDLLName, char *TempDLLName, char *LockedFileName)
+fn plugin HotLoadPlugin(str8 SourceDLLName, str8 TempDLLName, str8 LockedFileName)
 {
-  win32_sim_code Result = { 0 };
-  
+  plugin Result = { 0 };
   WIN32_FILE_ATTRIBUTE_DATA Ignored;
-  if(!GetFileAttributesEx((const char *)LockedFileName,
-                          GetFileExInfoStandard,
-                          &Ignored))
+  if(!GetFileAttributesEx((const char *)LockedFileName.Data, GetFileExInfoStandard, &Ignored))
   {
-    Result.DLLLastWriteTime = win32_GetLastWriteTime(SourceDLLName);
-    
-    CopyFile((const char *)SourceDLLName,
-             (const char *)TempDLLName, FALSE);
-    Result.SIM_DLL = LoadLibraryA((const char *)TempDLLName);
-    
-    if(Result.SIM_DLL)
+    Result.LastWrite = OSFileLastWriteTime(SourceDLLName);
+    CopyFile((const char *)SourceDLLName.Data,
+             (const char *)TempDLLName.Data, FALSE);
+    Result.Module = OSModuleLoad(TempDLLName);
+    if(Result.Module)
     {
-      Result.Update = (SIM_Update *)GetProcAddress(Result.SIM_DLL, "Update");
-      
+      Result.Update  = (SIM_Update *)OSModuleGetProc(Result.Module, Str8("Update"));
       Result.IsValid = (Result.Update != NULL);
     }
   }
-  if(!(Result.IsValid))
-  {
-    Result.Update = 0;
-  }
-  
+  if(!(Result.IsValid)) { Result.Update = 0; }
   return Result;
 }
-
-
-static void
-win32_HotUnloadSimCode(win32_sim_code *Sim)
+fn void HotUnloadPlugin(plugin *Plugin)
 {
-  if(Sim->SIM_DLL)
-  {
-    FreeLibrary(Sim->SIM_DLL);
-  }
-  
-  Sim->IsValid = FALSE;
-  Sim->Update  = 0;
-  
+  if(Plugin->Module) { OSModuleUnload(Plugin->Module); }
+  Plugin->IsValid = FALSE;
+  Plugin->Update  = 0;
   return;
 }
 
+#if 0
+#endif
+/*
 void
 ProcessPendingMessages(app_input *Input)
 {
@@ -561,110 +260,110 @@ ProcessPendingMessages(app_input *Input)
       {
         g_Running = FALSE;
       }  break;
-      /*
+      
       case WM_MOUSEWHEEL:
       {
           input->mouse_wheel_delta = ((s16)(Message.wParam >> 16) / 120.0f);
           input->mouse_wheel_integral += input->mouse_wheel_delta;
       } break;
-      */
-      case WM_SYSKEYUP:
-      case WM_SYSKEYDOWN:
-      case WM_KEYDOWN:
-      case WM_KEYUP:
-      {
-        u32 VKCode          = (u32)Message.wParam;
-        u32 KeyWasDown      = ((Message.lParam & (1 << 30)) != 0);
-        u32 KeyIsDown       = ((Message.lParam & (1 << 31)) == 0);
-        u32 KeyIndex = 0;
-        
-        if(KeyWasDown != KeyIsDown)
-        {
-          if(VKCode >= 'A' && VKCode <= 'Z')
-          { 
-            KeyIndex = Key_a + (VKCode - 'A');
-            ProcessKeyboardMessage(&Input->AlphaKeys[KeyIndex], KeyIsDown);
-          }
-          
-          switch(VKCode)
-          {
-            case VK_UP    : ProcessKeyboardMessage(&Input->NavKeys[0], KeyIsDown); break;
-            case VK_LEFT  : ProcessKeyboardMessage(&Input->NavKeys[1], KeyIsDown); break;
-            case VK_DOWN  : ProcessKeyboardMessage(&Input->NavKeys[2], KeyIsDown); break;
-            case VK_RIGHT : ProcessKeyboardMessage(&Input->NavKeys[3], KeyIsDown); break;
-            case VK_ESCAPE: ProcessKeyboardMessage(&Input->NavKeys[4], KeyIsDown); break;
-            case VK_SPACE : ProcessKeyboardMessage(&Input->NavKeys[5], KeyIsDown); break;
-            //case VK_F4    : g_Platform.QuitApp = KeyAltWasDown ? 1 : 0; break;
-          }
-        }
-        
-        // TODO(MIGUEL): Remove This and handle else where 
-        if(KeyWasDown != KeyIsDown)
-        {
-          switch(VKCode)
-          {
-            case VK_UP:
-            {
-            } break;
-            
-            case VK_LEFT:
-            {
-            } break;
-            
-            case VK_DOWN:
-            {
-            } break;
-            
-            case VK_RIGHT:
-            {
-              gFrameStep = TRUE;
-            } break;
-            
-            case VK_ESCAPE:
-            {
-            } break;
-            
-            case VK_SPACE: 
-            {
-            } break;
-            
-          }
-          
-          if((VKCode == 'P') && (KeyIsDown))
-          {
-            gPause= !gPause;
-          }
-          
-          if(KeyIsDown)
-          {
-            
-            u32 AltKeyWasDown = ( Message.lParam & (1 << 29));
-            if((VKCode == VK_F4) && AltKeyWasDown)
-            {
-              g_Running = FALSE;
-            }
-            if((VKCode == VK_RETURN) && AltKeyWasDown)
-            {
-              if(Message.hwnd)
-              {
-                //win32_toggle_fullscreen(Message.hwnd );
-              }
-            }
-          }
-        }
-      } break;
       
-      default:
-      {
-        TranslateMessage(&Message);
-        DispatchMessageA(&Message);
-      } break;
+case WM_SYSKEYUP:
+case WM_SYSKEYDOWN:
+case WM_KEYDOWN:
+case WM_KEYUP:
+{
+  u32 VKCode          = (u32)Message.wParam;
+  u32 KeyWasDown      = ((Message.lParam & (1 << 30)) != 0);
+  u32 KeyIsDown       = ((Message.lParam & (1 << 31)) == 0);
+  u32 KeyIndex = 0;
+  
+  if(KeyWasDown != KeyIsDown)
+  {
+    if(VKCode >= 'A' && VKCode <= 'Z')
+    { 
+      KeyIndex = Key_a + (VKCode - 'A');
+      ProcessKeyboardMessage(&Input->AlphaKeys[KeyIndex], KeyIsDown);
+    }
+    
+    switch(VKCode)
+    {
+      case VK_UP    : ProcessKeyboardMessage(&Input->NavKeys[0], KeyIsDown); break;
+      case VK_LEFT  : ProcessKeyboardMessage(&Input->NavKeys[1], KeyIsDown); break;
+      case VK_DOWN  : ProcessKeyboardMessage(&Input->NavKeys[2], KeyIsDown); break;
+      case VK_RIGHT : ProcessKeyboardMessage(&Input->NavKeys[3], KeyIsDown); break;
+      case VK_ESCAPE: ProcessKeyboardMessage(&Input->NavKeys[4], KeyIsDown); break;
+      case VK_SPACE : ProcessKeyboardMessage(&Input->NavKeys[5], KeyIsDown); break;
+      //case VK_F4    : g_Platform.QuitApp = KeyAltWasDown ? 1 : 0; break;
     }
   }
   
-  return;
+  // TODO(MIGUEL): Remove This and handle else where 
+  if(KeyWasDown != KeyIsDown)
+  {
+    switch(VKCode)
+    {
+      case VK_UP:
+      {
+      } break;
+      
+      case VK_LEFT:
+      {
+      } break;
+      
+      case VK_DOWN:
+      {
+      } break;
+      
+      case VK_RIGHT:
+      {
+        gFrameStep = TRUE;
+      } break;
+      
+      case VK_ESCAPE:
+      {
+      } break;
+      
+      case VK_SPACE: 
+      {
+      } break;
+      
+    }
+    
+    if((VKCode == 'P') && (KeyIsDown))
+    {
+      gPause= !gPause;
+    }
+    
+    if(KeyIsDown)
+    {
+      
+      u32 AltKeyWasDown = ( Message.lParam & (1 << 29));
+      if((VKCode == VK_F4) && AltKeyWasDown)
+      {
+        g_Running = FALSE;
+      }
+      if((VKCode == VK_RETURN) && AltKeyWasDown)
+      {
+        if(Message.hwnd)
+        {
+          //win32_toggle_fullscreen(Message.hwnd );
+        }
+      }
+    }
+  }
+} break;
+
+default:
+{
+  TranslateMessage(&Message);
+  DispatchMessageA(&Message);
+} break;
+}
 }
 
+return;
+}
+*/
 
 void CircleGeometry(v3f *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, u32 Resolution,
                     u32 *VertCountResult, u32 *IndexCountResult)
@@ -944,32 +643,30 @@ void DrawLine(renderer *Renderer,
 }
 
 void
-Render(renderer *Renderer, app_memory *AppMemory)
+Render(renderer *Renderer, v2s WindowDim, app_state *AppState)
 {
-  app_state *AppState = (app_state *)AppMemory->PermanentStorage;
   GlobalDebugState = AppState;
   BEGIN_TIMED_BLOCK(Render);
   
   if(Renderer->Context)
   {
-    if(g_WindowResized || !AppState->IsInitialized)
+    if(!IsEqual(WindowDim, Renderer->WindowDim, v2s) || !AppState->IsInitialized)
     {
+      m4f Proj = Orthom4f(0.0f, (f32)gState->WindowDim.x, 0.0f,
+                          (f32)gState->WindowDim.y, 0.0f, 100.0f);
       
-      m4f Proj = Orthom4f(0.0f, (f32)g_WindowDim.x, 0.0f,
-                          (f32)g_WindowDim.y, 0.0f, 100.0f);
-      
-      m4f View = Viewportm4f(V2f((f32)g_WindowDim.x,
-                                 (f32)g_WindowDim.y)); 
+      m4f View = Viewportm4f(V2f((f32)gState->WindowDim.x,
+                                 (f32)gState->WindowDim.y)); 
       Renderer->ConstBufferLow.Proj    = Proj;
       Renderer->ConstBufferLow.View    = View;
-      Renderer->ConstBufferLow.Res    = V2f((f32)g_WindowDim.x, (f32)g_WindowDim.y);
+      Renderer->ConstBufferLow.Res    = V2f((f32)gState->WindowDim.x, (f32)gState->WindowDim.y);
       
       
       ID3D11DeviceContext_OMSetRenderTargets(Renderer->Context, 0, 0, 0);
       ID3D11RenderTargetView_Release(Renderer->RenderTargetView);
       IDXGISwapChain1_ResizeBuffers(Renderer->SwapChain, 0,
-                                    (u32)g_WindowDim.x,
-                                    (u32)g_WindowDim.y,
+                                    (u32)gState->WindowDim.x,
+                                    (u32)gState->WindowDim.y,
                                     DXGI_FORMAT_UNKNOWN, 0);
       
       ID3D11Texture2D* Backbuffer;
@@ -986,8 +683,7 @@ Render(renderer *Renderer, app_memory *AppMemory)
       
       MemoryCopy(&Renderer->ConstBufferLow, sizeof(gpu_const_low), MappedConst.pData, sizeof(gpu_const_low));
       ID3D11DeviceContext_Unmap(Renderer->Context, (ID3D11Resource *)Renderer->CBLow, 0);
-      
-      g_WindowResized = 0;
+      Renderer->WindowDim = WindowDim;
     }
     
     ID3D11DeviceContext_OMSetRenderTargets(Renderer->Context, 1, &Renderer->RenderTargetView, 0);
@@ -997,8 +693,8 @@ Render(renderer *Renderer, app_memory *AppMemory)
     Viewport.TopLeftX = 0;
     Viewport.MinDepth  = 0;
     Viewport.MaxDepth  = 0;
-    Viewport.Width  = (f32)g_WindowDim.x;
-    Viewport.Height = (f32)g_WindowDim.y;
+    Viewport.Width  = (f32)gState->WindowDim.x;
+    Viewport.Height = (f32)gState->WindowDim.y;
     
     ID3D11DeviceContext_RSSetViewports(Renderer->Context, 1, &Viewport );
     
@@ -1818,110 +1514,15 @@ void D3D11HotLoadShaderLines(renderer *Renderer,
   return;
 }
 
-void
-D3D11LoadTextGlyphs(renderer *Renderer, const char * FontFileName, u32 MaxHeightInPixels, arena *AssetLoadingArena)
-{
-  if (FT_Init_FreeType(&FreeType))
-  {
-    OutputDebugString("FreeType Error: Could not init FreeType Library");
-    Assert(0);
-  }
-  if (FT_New_Face(FreeType, FontFileName, 0, &Face))
-  {
-    OutputDebugString("FreeType Error: Could not load Font");
-    Assert(0);
-  }
-  
-  FT_Set_Pixel_Sizes(Face, 0, MaxHeightInPixels);
-  FT_Glyph_Metrics *GlyphMetrics = &Face->glyph->metrics;
-  FT_Bitmap        *GlyphBitmap  = &Face->glyph->bitmap;
-  
-  u32 AsciiStart = 32;
-  u32 AsciiEnd = 126;
-  
-  for(u32 CharCode = AsciiStart; CharCode < AsciiEnd; CharCode++)
-  {
-    if (FT_Load_Char(Face, CharCode, FT_LOAD_RENDER))
-    {
-      Assert("FreeType Error: Could not load Glyph");
-      continue;
-    }
-    
-    f32 UnitConversion = 1.0f/64.0f;
-    //f32 UnitConversion = 1.0f/2048*100.0f; // NOTE(MIGUEL): Yields incorect pixel size
-    
-    glyph_metrics Metrics = {0};
-    Metrics.Dim = V2f((f32)GlyphMetrics->width*UnitConversion,
-                      (f32)GlyphMetrics->height*UnitConversion);
-    
-    Metrics.Bearing = V2f((f32)GlyphMetrics->horiBearingX*UnitConversion,
-                          (f32)GlyphMetrics->horiBearingY* UnitConversion);
-    Metrics.Advance = (f32)GlyphMetrics->horiAdvance*UnitConversion;
-    
-    u8  *GlyphBitmapData = GlyphBitmap->buffer;
-    u32  GlyphBitmapSize = (u32)(Metrics.Dim.x * Metrics.Dim.y);
-    
-    u8 Message[4096] = {0};
-    stbsp_snprintf((char *)Message, 4096,
-                   "Glyph Metrics: \"%c\" | "
-                   "H: %d  W: %d  | "
-                   "HoriAdv: %d   | "
-                   "BearingX: %d  | "
-                   "Bearing Y: %d | "
-                   "                "
-                   "Glyph Metrics OG| "
-                   "H: %d  W: %d  | "
-                   "HoriAdv: %d   | "
-                   "BearingX: %d  | "
-                   "Bearing Y: %d | "
-                   "\n",
-                   (char)CharCode,
-                   (u32)Metrics.Dim.x, (u32)Metrics.Dim.y,
-                   (u32)Metrics.Advance,
-                   (u32)Metrics.Bearing.x, (u32)Metrics.Bearing.y,
-                   GlyphMetrics->width, GlyphMetrics->height,
-                   GlyphMetrics->horiAdvance,
-                   GlyphMetrics->horiBearingX, GlyphMetrics->horiBearingY);
-    OutputDebugString((char *)Message);
-    
-    if(GlyphBitmapSize>0)
-    {
-      bitmapdata BitmapData = {0};
-      BitmapData.Width = (u32)Metrics.Dim.x;
-      BitmapData.Height = (u32)Metrics.Dim.y;
-      BitmapData.Pixels = (u8 *)ArenaPushArray(&Renderer->TextureArena, GlyphBitmapSize, u8);
-      BitmapData.BytesPerPixel = sizeof(u8);
-      MemoryCopy(GlyphBitmapData, GlyphBitmapSize, BitmapData.Pixels, GlyphBitmapSize);
-      
-      Metrics.BitmapData = BitmapData;
-      Renderer->GlyphMetrics[CharCode] = Metrics;
-    }
-  }
-  
-  return;
-}
-
-void PhysicsSim(HWND Window, app_memory *AppMemory)
+void PhysicsSim(void)
 {
   renderer *Renderer = &g_Renderer;
-  
-  arena AssetLoadingArena;
-  
-  ArenaInit(&AssetLoadingArena,
-            AppMemory->TransientStorageSize,
-            AppMemory->TransientStorage);
-  
-  // NOTE(MIGUEL): Should this load glyphs ???
-  D3D11LoadResources(Renderer, &AssetLoadingArena);
-  
-  D3D11LoadTextGlyphs(Renderer, "..\\res\\cour.ttf", 40, &AssetLoadingArena);
-  Renderer->RenderBuffer.GlyphMetrics = Renderer->GlyphMetrics;
-  //ArenaDiscard(&AssetLoadingArena);
-  
+  arena AssetLoadingArena = ArenaInit(NULL, gState->TransientSize, gState->Transient);
+  D3D11LoadResources(Renderer, &AssetLoadingArena); // NOTE(MIGUEL): Should this load glyphs ???
+  FontInit("..\\res\\cour.ttf", 40);
+  D3D11LoadTextGlyphs(Renderer, &AssetLoadingArena); Renderer->RenderBuffer.GlyphMetrics = Renderer->GlyphMetrics;
   Renderer->SmileyTex = LoadBitmapData("..\\res\\frown.bmp");
   Renderer->TextTex   = LoadBitmapData("..\\res\\text.bmp");
-  
-  // NOTE(MIGUEL): First
   D3D11InitTextureMapping(Renderer,
                           &Renderer->SmileyTexResource,
                           DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -1934,28 +1535,14 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
                           &Renderer->TextTexView,
                           &Renderer->TextSamplerState, 1,
                           &Renderer->TextTex);
-  
   // NOTE(MIGUEL): Passive transformation is a transform that changes the coordinate
   //               system. (World moving around you when walking to simulate you looking around)
   //               Active transformation does not change the coordinate system instead
   //               it changes the vectors in the coordinate system. (This moving in the enviorment.)
   //               Both can be used
-  
-  
-  win32_GetExeFileName(&g_winstate);
-  
-  char SimCodeDLLFullPathSource[WIN32_STATE_FILE_NAME_COUNT];
-  win32_BuildExePathFileName(&g_winstate, "app.dll",
-                             sizeof(SimCodeDLLFullPathSource), SimCodeDLLFullPathSource);
-  
-  char SimCodeDLLFullPathTemp  [WIN32_STATE_FILE_NAME_COUNT];
-  win32_BuildExePathFileName(&g_winstate, "app_temp.dll",
-                             sizeof(SimCodeDLLFullPathTemp), SimCodeDLLFullPathTemp);
-  
-  char SimCodeDLLFullPathLock  [WIN32_STATE_FILE_NAME_COUNT];
-  win32_BuildExePathFileName(&g_winstate, "lock.tmp",
-                             sizeof(SimCodeDLLFullPathLock), SimCodeDLLFullPathLock);
-  app_input Input;
+  str8 ModulePathSim     = BuildExePathFileName(gState, "app.dll"     , &gState->Arena);
+  str8 ModulePathSimTemp = BuildExePathFileName(gState, "app_temp.dll", &gState->Arena);
+  str8 ModulePathSimLock = BuildExePathFileName(gState, "lock.tmp"    , &gState->Arena);
   
   u64 TickFrequency = 0;
   u64 WorkStartTick = 0;
@@ -1966,56 +1553,40 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
   f64 TargetMicrosPerFrame = 16666.0; 
   f64 TicksToMicros = 1000000.0/(f64)TickFrequency;
   
-  win32_sim_code SimCode = { 0 };
-  
-  
+  plugin SimCode = {0};
   // NOTE(MIGUEL): Fuck this is sloppy
-  app_state *AppState = (app_state *)AppMemory->PermanentStorage;
+  app_state *AppState = ArenaPushType(&gState->Arena, app_state);
+  os_events Events = {0};
+  OSEventsInit(&Events);
   while (g_Running)
   {
     // NOTE(MIGUEL): Start Timer
-    AppState->WindowDim = V2f((f32)g_WindowDim.x, (f32)g_WindowDim.y);
-    InitInput(&Input, Window);
-    ProcessPendingMessages(&Input);
+    AppState->WindowDim = V2f((f32)gState->WindowDim.x, (f32)gState->WindowDim.y);
     
-    RECT WindowDim;
-    GetClientRect(Window, &WindowDim);
-    g_WindowDim.x  = WindowDim.right  - WindowDim.left;
-    g_WindowDim.y = WindowDim.bottom - WindowDim.top;
-    
-    g_WindowResized = TRUE;
-    
+    OSEventsConsume(&Events);
+    OSWindowGetNewSize();
     if(!gPause || gFrameStep)
     {
       QueryPerformanceCounter((LARGE_INTEGER *)&WorkStartTick);
-      arena ShaderLoadingArena;
-      
-      ArenaInit(&ShaderLoadingArena,
-                AppMemory->TransientStorageSize,
-                AppMemory->TransientStorage);
-      
+      arena ShaderLoadingArena = ArenaInit(NULL, gState->TransientSize, gState->Transient);;
       D3D11HotLoadShader(&g_Renderer,
                          &g_Renderer.InputLayout,
                          gVertexLayout,
                          gVertexLayoutCount,
                          &ShaderLoadingArena);
-      
       D3D11HotLoadShaderLines(&g_Renderer,
                               &g_Renderer.LineInputLayout,
                               gLineVLayout,
                               gLineVLayoutCount,
                               &ShaderLoadingArena);
-      
-      //ArenaDiscard(&ShaderLoadingArena);
-      
-      FILETIME NewDLLWriteTime = win32_GetLastWriteTime(SimCodeDLLFullPathSource);
+      datetime NewWriteTime = OSFileLastWriteTime(ModulePathSim);
       {
-        if(CompareFileTime(&NewDLLWriteTime, &SimCode.DLLLastWriteTime))
+        if(!IsEqual(NewWriteTime, SimCode.LastWrite, datetime))
         {
-          win32_HotUnloadSimCode(&SimCode);
-          SimCode = win32_HotLoadSimCode(SimCodeDLLFullPathSource,
-                                         SimCodeDLLFullPathTemp,
-                                         SimCodeDLLFullPathLock);
+          HotUnloadPlugin(&SimCode);
+          SimCode = HotLoadPlugin(ModulePathSim,
+                                  ModulePathSimTemp,
+                                  ModulePathSimLock);
         }
       }
       
@@ -2023,9 +1594,9 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
       
       if(SimCode.Update)
       {
-        SimCode.Update(AppMemory, &Input, &g_Renderer.RenderBuffer);
+        SimCode.Update(AppState, gState->Transient, gState->TransientSize, &Events, &g_Renderer.RenderBuffer);
       }
-      Render(&g_Renderer, AppMemory);
+      Render(&g_Renderer, gState->WindowDim, AppState);
       
       QueryPerformanceCounter((LARGE_INTEGER *)&WorkEndTick);
       
@@ -2052,9 +1623,10 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
         AppState->LongestFrameTime = FrameTimeMS;
       }
       AppState->DeltaTimeMS  = TargetMicrosPerFrame/ 1000;
-      AppState->DeltaTimeMS  = FrameTimeMS;
+      //AppState->DeltaTimeMS  = FrameTimeMS;
+      AppState->DeltaTimeMS  = TargetMicrosPerFrame/1000.0;
       AppState->Time        += AppState->DeltaTimeMS;
-      
+      AppState->FrameCount++;
       gFrameStep = gFrameStep == 1?0:1;
     }
     
@@ -2065,44 +1637,12 @@ void PhysicsSim(HWND Window, app_memory *AppMemory)
 
 void WinMainCRTStartup(void)
 {
-  HWND Window = CreateOutputWindow();
-  
-  app_memory AppMemory = { 0 };
-  
-  //ASSERT(TestMathLib());
-  
-  LPVOID BaseAddress = 0;
-  {
-    AppMemory.PermanentStorageSize = PERMANENT_STORAGE_SIZE;
-    AppMemory.TransientStorageSize = TRANSIENT_STORAGE_SIZE;
-    
-    AppMemory.MainBlockSize        = (AppMemory.PermanentStorageSize +
-                                      AppMemory.TransientStorageSize);
-    
-    AppMemory.MainBlock            = VirtualAlloc(BaseAddress, 
-                                                  (size_t)AppMemory.MainBlockSize,
-                                                  
-                                                  MEM_COMMIT | MEM_RESERVE,
-                                                  PAGE_READWRITE);
-    
-    AppMemory.PermanentStorage     = ((uint8_t *)AppMemory.MainBlock);
-    
-    AppMemory.TransientStorage     = ((uint8_t *)AppMemory.PermanentStorage +
-                                      AppMemory.PermanentStorageSize);
-    
-  }
-  
-  // NOTE(MIGUEL): Device is created for processing rasterization
-  if(D3D11Startup(Window, &g_Renderer))
-  {
-    PhysicsSim(Window, &AppMemory);
-  }
-  
-  
+  OSStateInit(&gState);
+  OSWindowCreate();
+  Assert(D3D11Startup((HWND)gState->Window, &g_Renderer));
+  PhysicsSim();
   D3D11Release(&g_Renderer);
-  
-  ExitProcess(0);
-  
+  OSProcessKill();
   return;
 }
 

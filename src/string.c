@@ -8,7 +8,7 @@ u64 CStrGetLength(const char *String, b32 IncludeNull)
   return Result;
 }
 
-static b32 CStrIsEqual(const char *a, const char *b)
+fn b32 CStrIsEqual(const char *a, const char *b)
 {
   b32 Result = 1;
   size_t Length = CStrGetLength(a, 1);
@@ -21,7 +21,13 @@ static b32 CStrIsEqual(const char *a, const char *b)
   
 }
 //~ CONNICAL STRINGS
-str8 Str8Base(u8 *String, u64 Length)
+fn b32 StrIsNullTerminated(str8 Str)
+{
+  b32 Result = Str.Data[Str.Length] == '\0';
+  Assert(Result);
+  return Result;
+}
+fn str8 Str8Base(u8 *String, u64 Length)
 {
   str8 Result = {0};
   Assert(Length<=U32MAX);
@@ -29,21 +35,21 @@ str8 Str8Base(u8 *String, u64 Length)
   Result.Length = (u32)Length;
   return Result;
 }
-str8 Str8FromCStr(char *String)
+fn str8 Str8FromCStr(char *String)
 {
   str8 Result = {0};
   Result.Data = (u8 *)String;
   Result.Length = CStrGetLength(String, 0);
   return Result;
 }
-str8 Str8FromArena(arena *Arena, u64 Length)
+fn str8 Str8FromArena(arena *Arena, u64 Length)
 {
   str8 Result = {0};
   Result.Length = Length;
   Result.Data = ArenaPushArray(Arena, Length, u8);
   return Result;
 }
-str8 Str8FromArenaFormat(arena *Arena, char const * Format, ...)
+fn str8 Str8FromArenaFormat(arena *Arena, char const * Format, ...)
 {
   va_list Args; va_start(Args, Format);
   str8 Result = Str8FromArena(Arena, stbsp_vsnprintf(NULL, 0, Format, Args));
@@ -51,7 +57,7 @@ str8 Str8FromArenaFormat(arena *Arena, char const * Format, ...)
   va_end(Args);
   return Result;
 }
-b32 Str8IsEqual(str8 a, str8 b)
+fn b32 Str8IsEqual(str8 a, str8 b)
 {
   b32 Result = 1;
   if(a.Length != b.Length) return 0;
@@ -60,7 +66,7 @@ b32 Str8IsEqual(str8 a, str8 b)
   Result = (Index==0);
   return Result;
 }
-str8 Str8Concat(str8 a, str8 b, arena *Arena)
+fn str8 Str8Concat(str8 a, str8 b, arena *Arena)
 {
   str8 Result;
   u64 Length = a.Length + b.Length;
@@ -70,9 +76,9 @@ str8 Str8Concat(str8 a, str8 b, arena *Arena)
   Result = Str8(Data, Length);
   return Result;
 }
-void S8Concat(u64 SourceACount, char *SourceA,
-              u64 SourceBCount, char *SourceB,
-              u64 DestCount   , char *Dest    )
+fn void S8Concat(u64 SourceACount, char *SourceA,
+                 u64 SourceBCount, char *SourceB,
+                 u64 DestCount   , char *Dest    )
 {
   //TODO(MIGUEL): Dest bounds checking!
   
@@ -101,7 +107,7 @@ void S8Concat(u64 SourceACount, char *SourceA,
 
 //~ STRING 32
 
-str32 Str32(u32 *Data, u32 Length)
+fn str32 Str32(u32 *Data, u32 Length)
 {
   str32 Result = {0};
   Result.Data = Data;

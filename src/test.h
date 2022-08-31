@@ -1,21 +1,30 @@
-#include "physics_sim_memory.h"
-#include "physics_sim_types.h"
-#include "physics_sim_math.h"
+#include "types.h"
+#include "memory.h"
+#include "string.h"
+#include "os.h"
+#include "math.h"
+//...
+#include "memory.c"
+#include "string.c"
+#include "win32_core.c"
+
 #include <wchar.h>
 
-#define TEST_NOPROC (__noop)
+#define NULLSTR ((u8 *)0x0ull)
+#define TEST_NOPROC ((voidproc *)0x0ull)
 #define TEST_NULL  ((void *)0)
 #define TEST_TRUE  (1)
 #define TEST_FALSE (0)
 
-#define ANSI_COLOR_RED     wprintf(L"\x1b[31m")
-#define ANSI_COLOR_GREEN   wprintf(L"\x1b[32m")
-#define ANSI_COLOR_YELLOW  wprintf(L"\x1b[33m")
-#define ANSI_COLOR_BLUE    wprintf(L"\x1b[34m")
-#define ANSI_COLOR_MAGENTA wprintf(L"\x1b[35m")
-#define ANSI_COLOR_CYAN    wprintf(L"\x1b[96m")
-#define ANSI_COLOR_RESET   wprintf(L"\x1b[0m")
+#define ColorRed     wprintf(L"\x1b[31m")
+#define ColorGreen   wprintf(L"\x1b[32m")
+#define ColorYellow  wprintf(L"\x1b[33m")
+#define ColorBlue    wprintf(L"\x1b[34m")
+#define ColorMagenta wprintf(L"\x1b[35m")
+#define ColorCyan    wprintf(L"\x1b[96m")
+#define ColorReset   wprintf(L"\x1b[0m")
 
+#define PrintAddress(x) wprintf(L"%hs = 0x%llx\n", #x, (u64)(x))
 #define Prints32(x) wprintf(L"%hs = %d\n"  , #x, (s32)(x))
 #define Prints64(x) wprintf(L"%hs = %lld\n", #x, (s64)(x))
 #define Printu32(x) wprintf(L"%hs = %u\n"  , #x, (u32)(x))
@@ -23,35 +32,58 @@
 #define Printf32(x) wprintf(L"%hs = %e [%f]\n", #x, (f32)(x), (f32)(x))
 #define Printf64(x) wprintf(L"%hs = %e [%f]\n", #x, (f64)(x), (f64)(x))
 
-#define TEST(type, Expected, TestResult, TestName, Assertion) \
+#define TestDecl(header) \
+ColorCyan; \
+wprintf(L"RUNNING "#header" UNIT TEST...\n\n"); \
+ColorReset
+
+#define TestCond(Condition, Details) \
+ColorCyan;   wprintf(L"TEST: %hs\n", "Condition"); \
+ColorReset;  wprintf(L"condition: %hs\n", #Condition); \
+ColorYellow; wprintf(L"Assertion: "); \
+ColorReset;  wprintf(L"%hs\n", Details); \
+if(Condition) \
 { \
-type expect = (Expected); \
-type result = (TestResult); \
-ANSI_COLOR_CYAN;   wprintf(L"TEST: %hs\n", TestName); \
-ANSI_COLOR_RESET;  wprintf(L"returns: %hs  expects: %hs\n", #type, #Expected); \
-ANSI_COLOR_YELLOW; wprintf(L"Assertion: "); \
-ANSI_COLOR_RESET;  wprintf(L"%hs\n", Assertion); \
-if(MemoryIsEqual((u8 *)&expect, (u8 *)&result, sizeof(type))) \
-{ \
-ANSI_COLOR_GREEN; \
+ColorGreen; \
 wprintf(L"PASSED!!!\n"); \
-ANSI_COLOR_RESET; \
+ColorReset; \
 } \
 else \
 { \
-ANSI_COLOR_RED; \
+ColorRed; \
 wprintf(L"FAILED!!!\n"); \
-ANSI_COLOR_RESET; \
+ColorReset; \
+}
+
+#define Test(type, Expected, TestResult, TestName, Assertion) \
+{ \
+type expect = (Expected); \
+type result = (TestResult); \
+ColorCyan;   wprintf(L"TEST: %hs\n", TestName); \
+ColorReset;  wprintf(L"returns: %hs  expects: %hs\n", #type, #Expected); \
+ColorYellow; wprintf(L"Assertion: "); \
+ColorReset;  wprintf(L"%hs\n", Assertion); \
+if(MemoryIsEqual((u8 *)&expect, (u8 *)&result, sizeof(type))) \
+{ \
+ColorGreen; \
+wprintf(L"PASSED!!!\n"); \
+ColorReset; \
+} \
+else \
+{ \
+ColorRed; \
+wprintf(L"FAILED!!!\n"); \
+ColorReset; \
 } \
 wprintf(L"\n\n"); \
 } \
 
-#define TESTFUNC(type, Function, Expected, ResultDisplay, Assertion) \
+#define TestFunc(type, Function, Expected, ResultDisplay, Assertion) \
 { \
 type expect = (Expected); \
 type result = (Function); \
-ANSI_COLOR_CYAN;  wprintf(L"TEST: "); \
-ANSI_COLOR_RESET; wprintf(L"%hs\n", #Function); \
+ColorCyan;  wprintf(L"TEST: "); \
+ColorReset; wprintf(L"%hs\n", #Function); \
 if(ResultDisplay) \
 { \
 wprintf(L"returns: %hs\n", #type); \
@@ -63,25 +95,24 @@ ResultDisplay(Function); \
 { \
 wprintf(L"returns: %hs  expects: %hs\n", #type, #Expected); \
 } \
-ANSI_COLOR_YELLOW; wprintf(L"Assertion: "); \
-ANSI_COLOR_RESET; wprintf(L"%hs\n", Assertion); \
-if(MemoryIsEqual((u8 *)&expect, (u8 *)&result, sizeof(type))) \
+ColorYellow; wprintf(L"Assertion: "); \
+ColorReset; wprintf(L"%hs\n", Assertion); \
+if(MemoryIsEqual(&expect, &result, sizeof(type))) \
 { \
-ANSI_COLOR_GREEN; \
+ColorGreen; \
 wprintf(L"PASSED!!!\n"); \
-ANSI_COLOR_RESET; \
+ColorReset; \
 } \
 else \
 { \
-ANSI_COLOR_RED; \
+ColorRed; \
 wprintf(L"FAILED!!!\n"); \
-ANSI_COLOR_RESET; \
+ColorReset; \
 } \
 wprintf(L"\n\n"); \
 } \
 
-#define DISPLAYM4F(name) void name(m4f Matrix)
-typedef DISPLAYM4F(display_m4f);
+typedef void display_m4f(m4f Matrix);
 
 void DisplayM4f(m4f Matrix)
 {
@@ -113,9 +144,10 @@ void DisplayCMf4x4Sequentialization(void)
   return;
 }
 
+typedef struct test_display test_display;
 struct test_display
 {
-  display_m4f *Mat4x4 = DisplayM4f;
+  display_m4f *Mat4x4;
 };
 
 test_display Display;

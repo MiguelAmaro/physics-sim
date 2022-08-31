@@ -124,6 +124,7 @@ struct app_state
   b32 IsInitialized;
   f64 DeltaTimeMS;
   f64 LongestFrameTime;
+  u64 FrameCount;
   f64 Time;
   
   // NOTE(MIGUEL): Temp
@@ -146,7 +147,7 @@ struct app_state
 
 app_state *GlobalDebugState = NULL;
 
-#define SIM_UPDATE( name) void name(app_memory *AppMemory, app_input *AppInput, render_buffer *RenderBuffer)
+#define SIM_UPDATE( name) void name(app_state *AppState, void *Transient, u64 TransientSize, os_events *Events, render_buffer *RenderBuffer)
 typedef SIM_UPDATE(SIM_Update);
 SIM_UPDATE(SIMUpdateStub)
 { return; }

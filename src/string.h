@@ -39,7 +39,8 @@ arena *: Str8FromArena)(__VA_ARGS__)
 
 //~ C STRINGS
 u64 CStrGetLength(const char *String, b32 IncludeNull);
-static b32 CStrIsEqual(const char *a, const char *b);
+b32 CStrIsEqual(const char *a, const char *b);
+b32 StrIsNullTerminated(str8 Str);
 //~ 8 BIT STRINGS
 str8 Str8Base(u8 *String, u64 Size);
 str8 Str8FromCStr(char *String);

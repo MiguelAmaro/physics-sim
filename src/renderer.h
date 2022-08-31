@@ -5,51 +5,7 @@
 #include <dxgi1_2.h>
 
 
-typedef struct bitmapdata bitmapdata;
-struct bitmapdata
-{
-  u32  Width;
-  u32  Height;
-  u8  *Pixels;
-  u32  BytesPerPixel;
-};
-
-typedef struct glyph_metrics glyph_metrics;
-struct glyph_metrics
-{
-  v2f Dim;
-  // NOTE(MIGUEL): // Horizontl text layout
-  v2f Bearing; 
-  f32 Advance;
-  bitmapdata BitmapData; 
-};
-
-#pragma pack(push, 1)
-typedef struct bitmapheader bitmapheader;
-struct bitmapheader
-{
-  u16 FileType;
-  u32 FileSize;
-  u16 reserved_1;
-  u16 reserved_2;
-  u32 BitmapOffset;
-  u32 Size;
-  s32 Width;
-  s32 Height;
-  u16 Planes;
-  u16 BitsPerPixel;
-  u32 Compression;
-  u32 BitmapSize;
-  s32 HRes;
-  s32 VRes;
-  u32 ColorsUsed;
-  u32 ColorsImportant;
-  
-  u32 RedMask;
-  u32 GreenMask;
-  u32 BlueMask;
-};
-#pragma pack(pop)
+#include "images.h"
 
 typedef struct render_point render_point;
 struct render_point
@@ -202,7 +158,7 @@ struct renderer
   HANDLE InUseShaderFileB;
   
   glyph_metrics GlyphMetrics[4096];
-  
+  v2s WindowDim;
   /// For real-time shader swaping
   WIN32_FIND_DATAA LineShaderFileInfo;
   char             LineShaderPath[MAX_PATH];

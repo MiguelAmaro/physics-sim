@@ -1,4 +1,10 @@
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <wincrypt.h>
+#define WIN32_STATE_FILE_NAME_COUNT (MAX_PATH)
+
+static DWORD Win32ThreadContextId = 0;
+
 //~ UTILS
 fn void OSGenEntropy(void *Data, u64 Size)
 {
@@ -50,13 +56,58 @@ fn str8 OSProcessGetWorkDir(arena *Arena)
   str8 Result = Str8(Data, Size-1);
   return Result;
 }
+//~ FILE SYSTEM
+fn b32 OSFileExists(str8 FileName)
+{
+  // NOTE(MIGUEL): Can also get file attributes
+  WIN32_FILE_ATTRIBUTE_DATA Ignored;
+  b32 Result = GetFileAttributesEx((LPCSTR)FileName.Data,
+                                   GetFileExInfoStandard,
+                                   &Ignored);
+  return Result;
+}
+fn datetime OSFileLastWriteTime(str8 FileName)
+{
+  datetime Result = {0};
+  FILETIME   FileTime = {0};
+  SYSTEMTIME SysTime  = {0};
+  WIN32_FILE_ATTRIBUTE_DATA FileInfo;
+  Assert(GetFileAttributesEx((LPCSTR)FileName.Data, GetFileExInfoStandard, &FileInfo));
+  FileTime = FileInfo.ftLastWriteTime;
+  FileTimeToSystemTime(&FileTime, &SysTime);
+  Result.year = (s16)SysTime.wYear;
+  Result.mon  = (u8) SysTime.wMonth;
+  //Result.day  = SysTime.wDayOfWeek;
+  Result.day  = (u8)SysTime.wDay;
+  Result.hour = (u8)SysTime.wHour;
+  Result.min  = (u8)SysTime.wMinute;
+  Result.sec  = (u8)SysTime.wSecond;
+  Result.ms   = (u8)SysTime.wMilliseconds;
+  return Result;
+}
+fn void OSGetExeFileName(os_state *State)
+{
+  u32 TotalLength = GetModuleFileNameA(NULL,(LPSTR)State->Buffer, sizeof(State->Buffer));
+  u8 *Dir = State->Buffer;
+  u8 *Exe = State->Buffer;
+  for(u8 *Scan = (u8 *)State->Buffer; *Scan; ++Scan)
+  {
+    if(*Scan == '\\') { Exe = Scan + 1;}
+  }
+  u32 Length = SafeTruncateu64(CStrGetLength((char *)Exe, 0));
+  State->ExeName = Str8(Exe, Length);
+  State->ExeDir  = Str8(Dir, TotalLength-Length);
+  return;
+}
+//~ STATISTICS
+
 //~ LOGGING METHODS
 fn u32 OSConsoleLogF(arena Arena, char *Format, ...)
 {
   va_list ArgList;
   va_start(ArgList, Format);
-  str8 String = Str8FromArena(&Arena, stbsp_vsprintf(NULL, Format, ArgList) + 1);
-  stbsp_vsprintf((char *)String.Data, Format, ArgList);
+  str8 String = Str8FromArena(&Arena, stbsp_vsnprintf(NULL, 0, Format, ArgList) + 1);
+  stbsp_vsnprintf((char *)String.Data, (u32)String.Length, Format, ArgList);
   u32 WriteCount = 0;
   WriteConsoleA((HANDLE)gState->Console, String.Data, (u32)String.Length, (LPDWORD)&WriteCount, NULL);
   return WriteCount;
@@ -86,7 +137,70 @@ fn void OSFatalError(const char* Message)
   MessageBoxA(NULL, Message, "Error", MB_ICONEXCLAMATION);
   ExitProcess(0);
 }
+void PrintLastSystemError(void)
+{
+  LPTSTR ErrorMsg;
+  uint32_t ErrorCode    = GetLastError();
+  uint32_t ErrorMsgLen = 0;
+  ErrorMsgLen = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                               FORMAT_MESSAGE_FROM_SYSTEM     ,
+                               NULL                           ,
+                               ErrorCode                      ,
+                               MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                               (char *)&ErrorMsg, 0, NULL);
+  
+  OutputDebugStringA(ErrorMsg);
+  //MessageBox(0, ErrorMsg, "Warning", MB_OK);
+  
+  LocalFree(ErrorMsg);
+  
+  return;
+}
+void PrintSystemMsg(UINT WinMsg)
+{
+  LPTSTR MsgStr;
+  uint32_t MsgLen = 0;
+  MsgLen = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                          FORMAT_MESSAGE_FROM_SYSTEM     ,
+                          NULL                           ,
+                          WinMsg   ,
+                          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                          (char *)&MsgStr, 0, NULL);
+  
+  OutputDebugStringA(MsgStr);
+  //MessageBox(0, ErrorMsg, "Warning", MB_OK);
+  
+  LocalFree(MsgStr);
+  
+  return;
+}
+//~ MODULES
+os_module OSModuleLoad(str8 Path)
+{
+  StrIsNullTerminated(Path);
+  HMODULE Module = LoadLibraryA((const char *)Path.Data);
+  return (os_module)Module;
+}
+void OSModuleUnload(os_module Module)
+{
+  FreeLibrary((HMODULE)Module);
+  return;
+}
+voidproc *OSModuleGetProc(os_module Module, str8 ProcName)
+{
+  StrIsNullTerminated(ProcName);
+  voidproc *Proc = (voidproc *)GetProcAddress((HMODULE)Module, (LPCSTR)ProcName.Data);
+  return Proc;
+}
 //~ EVENTS
+v2f OSEventsGetCursorPos(app_input *Input, HWND Window)
+{
+  POINT CursorPos;
+  GetCursorPos(&CursorPos);
+  ScreenToClient(Window, &CursorPos);
+  v2f Result = V2f((f32)CursorPos.x ,(f32)CursorPos.y);
+  return Result;
+}
 fn void OSEventsInit(os_events *Events)
 {
   Events->Events = NULL;
@@ -135,27 +249,6 @@ fn void OSEventsReset(os_events *Events)
   Events->Count = 0;
   os_event Event = { .Kind = Event_Null };
   OSEventsPush(Events, Event);
-  return;
-}
-fn void OSStateInit(os_state **OSState)
-{
-  os_state State = 
-  {
-    .Permanent     = OSMemoryAlloc(Gigabytes(1)),
-    .PermanentSize = Gigabytes(1),
-    .Transient     = OSMemoryAlloc(Gigabytes(2)),
-    .TransientSize = Gigabytes(2),
-    .Pool          = OSMemoryAlloc(Gigabytes(1)),
-    .PoolSize      = Gigabytes(1),
-    .WindowDim     = V2s(0,0),
-    .Running       = 1,
-    .Console       = 0, ///What exactly is a HANDLE in windows?
-    .Window        = 0,
-  };
-  State.Arena   = ArenaInit(NULL, State.PermanentSize, State.Permanent);
-  State.WorkDir = OSProcessGetWorkDir(&State.Arena);
-  *OSState    = ArenaPushType(&State.Arena, os_state);
-  **OSState   = State;
   return;
 }
 fn LRESULT CALLBACK OSEventsDefaultHandler(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -242,4 +335,119 @@ fn void OSWindowCreate(void)
   State->Window = (u64)Result;
   OSWindowGetNewSize();
   return;
+}
+//~ THREAD CONTEXT
+fn void OSThreadCtxSet(void *Ptr)
+{
+  TlsSetValue(Win32ThreadContextId, Ptr);
+  return;
+}
+fn void *OSThreadCtxGet(void)
+{
+  void *Result = TlsGetValue(Win32ThreadContextId);
+  return Result;
+}
+fn arena *OSThreadCtxGetScratch(os_thread_ctx *Ctx, arena **Conflicts, u32 ConflictCount)
+{
+  arena *Result = NULL;
+  arena *Scratch = Ctx->ScratchPool;
+  for(u32 Idx=0; Idx< ArrayCount(Ctx->ScratchPool); Idx++, Scratch++)
+  {
+    b32 IsNotConflict = 1;
+    arena **Conflict = Conflicts;
+    for(u32 j=0; j<ConflictCount; j++, Conflict++)
+    {
+      if(Scratch == *Conflict) { IsNotConflict = 0; break; }
+    }
+    if(IsNotConflict) { Result = Scratch; break; }
+  }
+  return Result;
+}
+fn void OSThreadCtxInit(os_thread_ctx *Ctx, void *Memory, u64 MemorySize)
+{
+  Ctx->Memory = Memory;
+  arena *Scratch = Ctx->ScratchPool;
+  for(u32 Idx=0; Idx< ArrayCount(Ctx->ScratchPool); Idx++, Scratch++)
+  {
+    *Scratch = ArenaInit(NULL, MemorySize, Memory); 
+  }
+  return;
+}
+//~ STATE
+fn void OSStateInit(os_state **OSState)
+{
+  os_state State = 
+  {
+    .Permanent     = OSMemoryAlloc(Gigabytes(1)),
+    .PermanentSize = Gigabytes(1),
+    .Transient     = OSMemoryAlloc(Gigabytes(2)),
+    .TransientSize = Gigabytes(2),
+    .Pool          = OSMemoryAlloc(Gigabytes(1)),
+    .PoolSize      = Gigabytes(1),
+    .WindowDim     = V2s(0,0),
+    .Running       = 1,
+    .Console       = 0, ///What exactly is a HANDLE in windows?
+    .Window        = 0,
+  };
+  State.Arena   = ArenaInit(NULL, State.PermanentSize, State.Permanent);
+  State.WorkDir = OSProcessGetWorkDir(&State.Arena);
+  *OSState    = ArenaPushType(&State.Arena, os_state);
+  **OSState   = State;
+  OSGetExeFileName(*OSState);
+  Win32ThreadContextId = TlsAlloc();
+  return;
+}
+//~ TIME
+
+typedef struct time_measure time_measure;
+struct time_measure
+{
+  f64 MSDelta;
+  f64 MSElapsed;
+  u64 TickFrequency;
+  u64 WorkStartTick;
+  u64 WorkEndTick;
+  u64 WorkTickDelta;
+  f64 MicrosElapsedWorking;
+  f64 TargetMicrosPerFrame;
+  f64 TicksToMicros;
+};
+time_measure OSTimerInit(void)
+{
+  time_measure Result = {0};
+  Result.MSDelta   = 0.0;
+  Result.MSElapsed = 0.0;
+  Result.TickFrequency = 0;
+  Result.WorkStartTick = 0;
+  Result.WorkEndTick = 0;
+  Result.WorkTickDelta = 0;
+  Result.MicrosElapsedWorking = 0.0;
+  Result.TargetMicrosPerFrame = 16666.0;
+  Result.TicksToMicros = 1000000.0/(f64)Result.TickFrequency;
+  QueryPerformanceFrequency((LARGE_INTEGER *)&Result.TickFrequency);
+  return Result;
+}
+void OSTimerStart(void)
+{
+  return;
+}
+f64 OSTimeMeasureElapsed(time_measure *Time)
+{
+  QueryPerformanceCounter((LARGE_INTEGER *)&Time->WorkEndTick);
+  Time->WorkTickDelta  = Time->WorkEndTick - Time->WorkStartTick;
+  Time->MicrosElapsedWorking = (f64)Time->WorkTickDelta*Time->TicksToMicros;
+  u64 IdleTickDelta = 0;
+  u64 IdleStartTick = Time->WorkEndTick;
+  u64 IdleEndTick = 0;
+  f64 MicrosElapsedIdle = 0.0;
+  while((Time->MicrosElapsedWorking+MicrosElapsedIdle)<Time->TargetMicrosPerFrame)
+  {
+    QueryPerformanceCounter((LARGE_INTEGER *)&IdleEndTick);
+    IdleTickDelta = IdleEndTick-IdleStartTick;
+    MicrosElapsedIdle = (f64)IdleTickDelta*Time->TicksToMicros;
+  }
+  f64 FrameTimeMS = (Time->MicrosElapsedWorking+MicrosElapsedIdle)/1000.0;
+  Time->MSDelta    = FrameTimeMS;
+  Time->MSElapsed += FrameTimeMS;
+  return Time->MSDelta;
 }

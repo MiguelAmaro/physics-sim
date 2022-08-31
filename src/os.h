@@ -1,7 +1,6 @@
 #ifndef OS_H
 #define OS_H
 
-
 #define DEFAULT_WINDOW_COORDX  0
 #define DEFAULT_WINDOW_COORDY  10
 #define DEFAULT_WINDOW_WIDTH  800
@@ -9,6 +8,7 @@
 
 typedef u64 os_window;
 typedef u64 os_handle;
+typedef os_handle os_module;
 
 typedef struct os_state os_state;
 struct os_state
@@ -24,7 +24,29 @@ struct os_state
   u64   TransientSize;
   u8   *Pool;
   u64   PoolSize;
+  u8    Buffer[256]; //WIN32_STATE_FILE_NAME_COUNT
+  str8  ExeDir;
+  str8  ExeName;
   arena Arena;
+};
+#if 0
+typedef struct os_module os_module;
+struct os_module
+{
+  os_handle  Module;
+  voidproc  *Proc;
+  b32        IsValid;
+  FILETIME   DLLLastWriteTime;
+};
+#endif
+
+//THREAD CONTEXT
+#define TCTX_SCRATCH_POOL_COUNT 4
+typedef struct os_thread_ctx os_thread_ctx;
+struct os_thread_ctx
+{ 
+  u8   *Memory;
+  arena ScratchPool[TCTX_SCRATCH_POOL_COUNT];
 };
 
 typedef enum os_event_kind os_event_kind;
@@ -96,5 +118,6 @@ fn void  OSMemoryCommit  (void *Pointer, u64 Size);
 fn void  OSMemoryDecommit(void *Pointer, u64 Size);
 fn void  OSMemoryRelease (void *Pointer, u64 Size);
 fn void  OSGenEntropy    (void *Data, u64 Size);
-
+fn void  OSThreadCtxInit(os_thread_ctx *Ctx, void *Memory, u64 MemorySize);
+fn arena *OSThreadCtxGetScratch(os_thread_ctx *Ctx, arena **Conflicts, u32 ConflictCount);
 #endif //OS_H
