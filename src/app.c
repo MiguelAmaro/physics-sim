@@ -673,7 +673,7 @@ APIPROC SIM_UPDATE(Update)
     if(Entity->Type == Entity_Moves && Entity->Exists)
     {
       
-      f32 MaxSpeed = 0.0001f;
+      f32 MaxSpeed = 10.1f;
       v3f Acc   = Entity->Acc;
       v3f Vel   = Entity->Vel;
       
@@ -685,12 +685,12 @@ APIPROC SIM_UPDATE(Update)
                           Scale(Scale(Vel, MaxSpeed), (f32)AppState->DeltaTimeMS));
       //PosDelta = (Length(PosDelta) > WorldSpace.y)?Scale(Normalize(PosDelta), WorldSpace.y):PosDelta;
       Entity->Vel = Normalize(Add(Scale(Acc,(f32)AppState->DeltaTimeMS), Entity->Vel));
-      Entity->Acc = Normalize(Alignment);
-      
+      //Entity->Acc = Normalize(Alignment);
       //APPLY MOVE
       i2f Viewport = I2fCenteredDim(WorldSpace.xy);
-      v3f NewPos   = Add(Entity->Pos, PosDelta);
-      Entity->Pos  = WorldToroidalPos(Viewport, NewPos);
+      //v3f NewPos   = Add(Entity->Pos, PosDelta);
+      //Entity->Pos  = WorldToroidalPos(Viewport, NewPos);
+      Entity->Pos  = Add(Entity->Pos, PosDelta);
     }
   }
   

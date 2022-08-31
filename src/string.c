@@ -27,7 +27,7 @@ fn b32 StrIsNullTerminated(str8 Str)
   Assert(Result);
   return Result;
 }
-fn str8 Str8Base(u8 *String, u64 Length)
+fn str8 Str8Lit(u8 *String, u64 Length)
 {
   str8 Result = {0};
   Assert(Length<=U32MAX);

@@ -152,18 +152,16 @@ struct renderer
   gpu_const_low    ConstBufferLow;
   
   /// For real-time shader swaping
-  WIN32_FIND_DATAA CurrentShaderFileInfo;
-  char             CurrentShaderPath[MAX_PATH];
-  HANDLE InUseShaderFileA;
-  HANDLE InUseShaderFileB;
+  arena Arena;
+  u8 ArenaBuffer[Kilobytes(2)];
+  datetime ShaderLastWrite;
+  str8     ShaderPath;
   
   glyph_metrics GlyphMetrics[4096];
   v2s WindowDim;
   /// For real-time shader swaping
-  WIN32_FIND_DATAA LineShaderFileInfo;
-  char             LineShaderPath[MAX_PATH];
-  HANDLE InUseLineShaderFileA;
-  HANDLE InUseLineShaderFileB;
+  str8     LineShaderPath;
+  datetime LineShaderLastWrite;
 };
 
 cam *CameraInit(arena *Arena, v3f Pos, v3f Dim, f32 UnitToPixels)

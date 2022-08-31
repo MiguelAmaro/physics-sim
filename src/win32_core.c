@@ -68,6 +68,11 @@ fn b32 OSFileExists(str8 FileName)
 }
 fn datetime OSFileLastWriteTime(str8 FileName)
 {
+  /* Maybe usefull code
+  WIN32_FIND_DATAA *LineShaderFileInfo = &Renderer->LineShaderFileInfo;
+  FindFirstFileA(LineShaderPath,
+                 LineShaderFileInfo);
+  */
   datetime Result = {0};
   FILETIME   FileTime = {0};
   SYSTEMTIME SysTime  = {0};
@@ -98,6 +103,35 @@ fn void OSGetExeFileName(os_state *State)
   State->ExeName = Str8(Exe, Length);
   State->ExeDir  = Str8(Dir, TotalLength-Length);
   return;
+}
+fn u64 OSFileGetSize(str8 Path)
+{
+  HANDLE Handle = CreateFileA((LPCSTR)Path.Data, GENERIC_READ, FILE_SHARE_READ, 0,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+  LARGE_INTEGER Whatever = { 0 };
+  u64 Result = 0;
+  b32 Status = GetFileSizeEx(Handle, &Whatever);
+  Result = Whatever.QuadPart;
+  Assert(Status != 0);
+  CloseHandle(Handle);
+  return Result;
+}
+fn str8 OSFileRead(str8 Path, arena *Arena)
+{
+  str8 Result = {0};
+  HANDLE File = CreateFileA((LPCSTR)Path.Data, GENERIC_READ, FILE_SHARE_READ,
+                            0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+  if(File)
+  {
+    u64 ExpectedSize = OSFileGetSize(Path); Assert(ExpectedSize<U32MAX);
+    u64 BytesRead    = 0;
+    Result = Str8(Arena, ExpectedSize);
+    ReadFile(File, Result.Data, (u32)ExpectedSize, (LPDWORD)&BytesRead, NULL);
+    Assert(BytesRead == ExpectedSize);
+    Result.Length = BytesRead;
+  }
+  CloseHandle(File);
+  return Result;
 }
 //~ STATISTICS
 

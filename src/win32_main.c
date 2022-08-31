@@ -2,6 +2,7 @@
 #define PERMANENT_STORAGE_SIZE (Megabytes(256))
 #define TRANSIENT_STORAGE_SIZE (Gigabytes(  4))
 
+
 #define COBJMACROS
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -17,19 +18,13 @@
 #include "math.h"
 
 #include "renderer.h"
+#include "dx11.h"
 #include "app.h"
 #include "assets.h"
-
 #include "memory.c"
 #include "string.c"
 #include "win32_core.c" //os.c
 #include "font.h"
-
-/// SET INPUT LAYOUT
-global D3D11_INPUT_ELEMENT_DESC gVertexLayout[3] = { 0 };
-global u32 gVertexLayoutCount = 3;
-global D3D11_INPUT_ELEMENT_DESC gLineVLayout[3] = { 0 };
-global u32 gLineVLayoutCount = 3;
 
 //-/ TYPES
 typedef struct buffer buffer;
@@ -46,144 +41,6 @@ b32      g_Running  = TRUE;
 b32      gPause     = FALSE;
 b32      gFrameStep = TRUE;
 //-/ FUNCTIONS
-
-static void
-D3D11InitTextureMapping(renderer                 *Renderer,
-                        ID3D11Texture2D **Texture,
-                        DXGI_FORMAT Format,
-                        ID3D11ShaderResourceView **ResView,
-                        ID3D11SamplerState       **SamplerState,
-                        u32 SubresourceArraySize,
-                        bitmapdata *BitmapData)
-{
-  //u32 MaxBitmapWidth; 
-  //u32 MaxBitampHeigth;
-  D3D11_TEXTURE2D_DESC TextDesc = { 0 };
-  TextDesc.Width  = BitmapData->Width;
-  TextDesc.Height = BitmapData->Height;
-  TextDesc.MipLevels = 1;
-  TextDesc.ArraySize = SubresourceArraySize;
-  TextDesc.Format = Format;
-  TextDesc.SampleDesc.Count   = 1;
-  TextDesc.SampleDesc.Quality = 0;
-  TextDesc.Usage     = D3D11_USAGE_DEFAULT;
-  TextDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-  TextDesc.CPUAccessFlags = 0;
-  TextDesc.MiscFlags      = 0;
-  
-  D3D11_SUBRESOURCE_DATA SubresData = { 0 };
-  SubresData.pSysMem     = BitmapData->Pixels;
-  SubresData.SysMemPitch = BitmapData->Width * BitmapData->BytesPerPixel;
-  ID3D11Device_CreateTexture2D(Renderer->Device, &TextDesc, &SubresData, Texture);
-  
-  D3D11_SHADER_RESOURCE_VIEW_DESC ResViewDesc = { 0 };
-  ResViewDesc.Format          = TextDesc.Format;
-  ResViewDesc.ViewDimension   = D3D11_SRV_DIMENSION_TEXTURE2D;
-  ResViewDesc.Texture2D.MostDetailedMip = 0;
-  ResViewDesc.Texture2D.MipLevels       = 1;
-  ID3D11Device_CreateShaderResourceView(Renderer->Device, (ID3D11Resource*)*Texture, &ResViewDesc, ResView);
-  
-  D3D11_SAMPLER_DESC SamplerDesc = { 0 };
-  SamplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-  SamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-  SamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-  SamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-  ID3D11Device_CreateSamplerState(Renderer->Device, &SamplerDesc, SamplerState);
-  
-  return;
-}
-static void
-D3D11Release(renderer *Renderer)
-{
-  if(Renderer->RenderTargetView) ID3D11RenderTargetView_Release(Renderer->RenderTargetView);
-  //if(Renderer->SwapChain       ) ID3D11SwapChain_Release();
-  if(Renderer->Context         ) ID3D11DeviceContext_Release(Renderer->Context);
-  if(Renderer->Device          ) ID3D11Device_Release(Renderer->Device);
-  return;
-}
-static b32
-D3D11Startup(HWND Window, renderer *Renderer)
-{
-  HRESULT Status;
-  b32     Result = TRUE;
-  
-  D3D_FEATURE_LEVEL Levels[] = {D3D_FEATURE_LEVEL_11_0};
-  UINT Flags = (D3D11_CREATE_DEVICE_BGRA_SUPPORT   |
-                D3D11_CREATE_DEVICE_SINGLETHREADED |
-                D3D11_CREATE_DEVICE_DEBUG);
-  // NOTE(MIGUEL): For if I want to ceate the device and swapchain seperately.
-  Status = D3D11CreateDevice(0, D3D_DRIVER_TYPE_HARDWARE, 0, Flags, Levels,
-                             ARRAYSIZE(Levels), D3D11_SDK_VERSION,
-                             &Renderer->Device, 0, &Renderer->Context);
-  
-  Assert(SUCCEEDED(Status));
-  
-  // NOTE(MIGUEL): The swapchain BufferCount needs to be 2 to get
-  //               2 backbuffers. Change it to 1 to see the effects.
-  
-  DXGI_SWAP_CHAIN_DESC1 SwapChainDescription = {0};
-  SwapChainDescription.BufferCount = 2; 
-  SwapChainDescription.Width  = gState->WindowDim.x;
-  SwapChainDescription.Height = gState->WindowDim.y;
-  SwapChainDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-  SwapChainDescription.BufferUsage        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-  SwapChainDescription.Scaling            = DXGI_SCALING_NONE;
-  SwapChainDescription.SwapEffect         = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-  SwapChainDescription.SampleDesc.Count   = 1;
-  SwapChainDescription.SampleDesc.Quality = 0;
-  
-  Assert(SUCCEEDED(Status));
-  {
-    IDXGIFactory2* Factory;
-    Status = CreateDXGIFactory(&IID_IDXGIFactory2, &Factory);
-    Assert(SUCCEEDED(Status));
-    Status = IDXGIFactory2_CreateSwapChainForHwnd(Factory, (IUnknown*)Renderer->Device, Window,
-                                                  &SwapChainDescription, NULL, NULL, &Renderer->SwapChain);
-    Assert(SUCCEEDED(Status));
-    IDXGIFactory2_Release(Factory);
-  }
-  {
-    IDXGIFactory* Factory;
-    IDXGISwapChain1_GetParent(Renderer->SwapChain, &IID_IDXGIFactory, &Factory);
-    IDXGIFactory_MakeWindowAssociation(Factory, Window, DXGI_MWA_NO_ALT_ENTER);
-    IDXGIFactory_Release(Factory);	
-  }
-  ID3D11InfoQueue* Info;
-  ID3D11Device_QueryInterface(Renderer->Device, &IID_ID3D11InfoQueue, &Info);
-  ID3D11InfoQueue_SetBreakOnSeverity(Info, D3D11_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-  ID3D11InfoQueue_SetBreakOnSeverity(Info, D3D11_MESSAGE_SEVERITY_ERROR, TRUE);
-  ID3D11InfoQueue_Release(Info);
-  
-#if 0
-  Status = D3D11CreateDeviceAndSwapChain(0, // NOTE(MIGUEL): Get default video adapter
-                                         D3D_DRIVER_TYPE_HARDWARE,
-                                         0, // NOTE(MIGUEL): Handle to the dll containing the software render if one is used
-                                         Flags,
-                                         Levels, ARRAYSIZE(Levels),
-                                         D3D11_SDK_VERSION,
-                                         &SwapChainDescription,
-                                         &Renderer->SwapChain,
-                                         &Renderer->Device,
-                                         &Renderer->FeatureLevel, &Renderer->Context );
-#endif
-  
-  ID3D11Texture2D* Backbuffer;
-  IDXGISwapChain1_GetBuffer(Renderer->SwapChain, 0, &IID_ID3D11Texture2D, &Backbuffer);
-  ID3D11Device_CreateRenderTargetView(Renderer->Device, (ID3D11Resource*)Backbuffer, NULL, &Renderer->RenderTargetView);
-  ID3D11Texture2D_Release(Backbuffer);
-  Assert(SUCCEEDED(Status));
-  
-  ID3D11DeviceContext_OMSetRenderTargets(Renderer->Context, 1, &Renderer->RenderTargetView, 0);
-  D3D11_VIEWPORT Viewport;
-  Viewport.TopLeftX = 0.0f;
-  Viewport.TopLeftY = 0.0f;
-  Viewport.Width  = (f32)gState->WindowDim.x;
-  Viewport.Height = (f32)gState->WindowDim.y;
-  Viewport.MinDepth = 0.0f;
-  Viewport.MaxDepth = 1.0f;
-  ID3D11DeviceContext_RSSetViewports(Renderer->Context, 1, &Viewport);
-  return Result;
-}
 
 typedef struct plugin plugin;
 struct plugin
@@ -241,129 +98,6 @@ fn void HotUnloadPlugin(plugin *Plugin)
   Plugin->Update  = 0;
   return;
 }
-
-#if 0
-#endif
-/*
-void
-ProcessPendingMessages(app_input *Input)
-{
-  MSG Message = {0};
-  
-  while(PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
-  {
-    //PrintSystemMsg(Message.message);
-    
-    switch(Message.message)
-    {
-      case WM_QUIT:
-      {
-        g_Running = FALSE;
-      }  break;
-      
-      case WM_MOUSEWHEEL:
-      {
-          input->mouse_wheel_delta = ((s16)(Message.wParam >> 16) / 120.0f);
-          input->mouse_wheel_integral += input->mouse_wheel_delta;
-      } break;
-      
-case WM_SYSKEYUP:
-case WM_SYSKEYDOWN:
-case WM_KEYDOWN:
-case WM_KEYUP:
-{
-  u32 VKCode          = (u32)Message.wParam;
-  u32 KeyWasDown      = ((Message.lParam & (1 << 30)) != 0);
-  u32 KeyIsDown       = ((Message.lParam & (1 << 31)) == 0);
-  u32 KeyIndex = 0;
-  
-  if(KeyWasDown != KeyIsDown)
-  {
-    if(VKCode >= 'A' && VKCode <= 'Z')
-    { 
-      KeyIndex = Key_a + (VKCode - 'A');
-      ProcessKeyboardMessage(&Input->AlphaKeys[KeyIndex], KeyIsDown);
-    }
-    
-    switch(VKCode)
-    {
-      case VK_UP    : ProcessKeyboardMessage(&Input->NavKeys[0], KeyIsDown); break;
-      case VK_LEFT  : ProcessKeyboardMessage(&Input->NavKeys[1], KeyIsDown); break;
-      case VK_DOWN  : ProcessKeyboardMessage(&Input->NavKeys[2], KeyIsDown); break;
-      case VK_RIGHT : ProcessKeyboardMessage(&Input->NavKeys[3], KeyIsDown); break;
-      case VK_ESCAPE: ProcessKeyboardMessage(&Input->NavKeys[4], KeyIsDown); break;
-      case VK_SPACE : ProcessKeyboardMessage(&Input->NavKeys[5], KeyIsDown); break;
-      //case VK_F4    : g_Platform.QuitApp = KeyAltWasDown ? 1 : 0; break;
-    }
-  }
-  
-  // TODO(MIGUEL): Remove This and handle else where 
-  if(KeyWasDown != KeyIsDown)
-  {
-    switch(VKCode)
-    {
-      case VK_UP:
-      {
-      } break;
-      
-      case VK_LEFT:
-      {
-      } break;
-      
-      case VK_DOWN:
-      {
-      } break;
-      
-      case VK_RIGHT:
-      {
-        gFrameStep = TRUE;
-      } break;
-      
-      case VK_ESCAPE:
-      {
-      } break;
-      
-      case VK_SPACE: 
-      {
-      } break;
-      
-    }
-    
-    if((VKCode == 'P') && (KeyIsDown))
-    {
-      gPause= !gPause;
-    }
-    
-    if(KeyIsDown)
-    {
-      
-      u32 AltKeyWasDown = ( Message.lParam & (1 << 29));
-      if((VKCode == VK_F4) && AltKeyWasDown)
-      {
-        g_Running = FALSE;
-      }
-      if((VKCode == VK_RETURN) && AltKeyWasDown)
-      {
-        if(Message.hwnd)
-        {
-          //win32_toggle_fullscreen(Message.hwnd );
-        }
-      }
-    }
-  }
-} break;
-
-default:
-{
-  TranslateMessage(&Message);
-  DispatchMessageA(&Message);
-} break;
-}
-}
-
-return;
-}
-*/
 
 void CircleGeometry(v3f *Buffer, u32 BufferSize, u16 *IBuffer, u32 IBufferSize, u32 Resolution,
                     u32 *VertCountResult, u32 *IndexCountResult)
@@ -642,8 +376,7 @@ void DrawLine(renderer *Renderer,
   return;
 }
 
-void
-Render(renderer *Renderer, v2s WindowDim, app_state *AppState)
+void Render(renderer *Renderer, v2s WindowDim, app_state *AppState)
 {
   GlobalDebugState = AppState;
   BEGIN_TIMED_BLOCK(Render);
@@ -881,261 +614,102 @@ Render(renderer *Renderer, v2s WindowDim, app_state *AppState)
   return;
 }
 
+
+fn ID3DBlob *D3D11LoadAndCompileShader(str8 ShaderFileDir, const char *ShaderEntry,
+                                       const char *ShaderTypeAndVer, const char *CallerName)
+{
+  ID3DBlob *ShaderBlob, *Error;
+  HRESULT Status;
+  u8 Buffer[Kilobytes(8)];
+  arena Arena     = ArenaInit(&Arena, Kilobytes(8), &Buffer);
+  arena_temp Temp = ArenaTempBegin(&Arena);
+  str8 ShaderSrc  = OSFileRead(ShaderFileDir, Temp.Arena);
+  ArenaTempEnd(Temp);
+  UINT flags = (D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR |
+                D3DCOMPILE_ENABLE_STRICTNESS        |
+                D3DCOMPILE_WARNINGS_ARE_ERRORS);
+  flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+  Status = D3DCompile(ShaderSrc.Data, ShaderSrc.Length, NULL, NULL, NULL,
+                      (LPCSTR)ShaderEntry, (LPCSTR)ShaderTypeAndVer, flags, 0, &ShaderBlob, &Error);
+  if (FAILED(Status))
+  {
+    const char* message = ID3D10Blob_GetBufferPointer(Error);
+    OutputDebugStringA(message);
+    ConsoleLog(Arena, "[%s]: Failed to load shader of type %s !!!", ShaderTypeAndVer, CallerName);
+    Assert("Failed to load shader! Look at console for details");
+  }
+  return ShaderBlob;
+}
 // NOTE(MIGUEL): SHADER STUFFFF
 b32 LoadShader(renderer *Renderer,
+               str8 Path,
                ID3D11VertexShader **NewVertexShader,
                ID3D11PixelShader  **NewPixelShader,
                ID3D11InputLayout  **InputLayout,
                D3D11_INPUT_ELEMENT_DESC  *ElemDesc,
-               u32 ElemCount,
-               HANDLE ShaderCodeHandle,
-               size_t ShaderFileSize,
-               arena *AssetLoadingArena)
+               u32 ElemCount)
 {
-  HRESULT Result;
-  
+  HRESULT Status;
   /// CREATE VERTEX SHADER
-  ID3DBlob *VertexShaderBuffer;
-  
-  DWORD ShaderFlags =  D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_DEBUG;
-  
-  ID3DBlob *ErrorBuffer;
-  
-  // NOTE(MIGUEL): D3DX11CompileFromFile is depricated
-  
-  u8 *ShaderCode = ArenaPushArray(AssetLoadingArena,
-                                  ShaderFileSize, u8);
-  
-  
-  ReadFile(ShaderCodeHandle, ShaderCode, SafeTruncateu64(ShaderFileSize), 0, 0);
-  CloseHandle(ShaderCodeHandle);
-  
-  Result = D3DCompile(ShaderCode, ShaderFileSize,
-                      0, 0, 0, "VS_Main", "vs_4_0", ShaderFlags, 0,
-                      &VertexShaderBuffer, &ErrorBuffer);
-  if(FAILED(Result))
-  {
-    OutputDebugString((LPCSTR)ID3D10Blob_GetBufferPointer(ErrorBuffer));
-    if(ErrorBuffer != 0)
-    {
-      ID3D10Blob_Release(ErrorBuffer);
-      return FALSE;
-    }
-  }
-  Result = ID3D11Device_CreateVertexShader(Renderer->Device,
+  ID3DBlob *VertexShaderBuffer = D3D11LoadAndCompileShader(Path, "VS_Main", "vs_5_0", "Load Shader Function");
+  Status = ID3D11Device_CreateVertexShader(Renderer->Device,
                                            ID3D10Blob_GetBufferPointer(VertexShaderBuffer),
                                            ID3D10Blob_GetBufferSize(VertexShaderBuffer),
                                            NULL, NewVertexShader);
+  Assert(SUCCEEDED(Status));
   
-  if(FAILED(Result))
-  {
-    ID3D10Blob_Release(VertexShaderBuffer);
-    return FALSE;
-  }
-  
-  Result = ID3D11Device_CreateInputLayout(Renderer->Device, ElemDesc,
+  Status = ID3D11Device_CreateInputLayout(Renderer->Device, ElemDesc,
                                           ElemCount,
                                           ID3D10Blob_GetBufferPointer(VertexShaderBuffer),
                                           ID3D10Blob_GetBufferSize(VertexShaderBuffer),
                                           InputLayout);
-  
   if(VertexShaderBuffer) ID3D10Blob_Release(VertexShaderBuffer);
   
   /// CREATE PIXEL SHADER
-  
-  ID3DBlob* PixelShaderBuffer = 0;
-  
-  Result = D3DCompile(ShaderCode,
-                      ShaderFileSize,
-                      0,
-                      0, 0,
-                      "PS_Main",
-                      "ps_4_0",
-                      ShaderFlags,
-                      0,
-                      &PixelShaderBuffer,
-                      &ErrorBuffer);
-  
-  if(FAILED(Result))
-  {
-    if(ErrorBuffer != 0)
-    {
-      ID3D10Blob_Release(ErrorBuffer);
-      return FALSE;
-    }
-  }
-  
-  Result = ID3D11Device_CreatePixelShader(Renderer->Device,
+  ID3DBlob* PixelShaderBuffer = D3D11LoadAndCompileShader(Path, "PS_Main", "ps_5_0", "Load Shader Function");
+  Status = ID3D11Device_CreatePixelShader(Renderer->Device,
                                           ID3D10Blob_GetBufferPointer(PixelShaderBuffer),
                                           ID3D10Blob_GetBufferSize(PixelShaderBuffer), 0,
                                           NewPixelShader);
+  Assert(SUCCEEDED(Status));
   if(VertexShaderBuffer) ID3D10Blob_Release(PixelShaderBuffer);
-  if(FAILED(Result)) { return FALSE; }
   return TRUE; 
 }
 
 void D3D11LoadResources(renderer *Renderer, arena *AssetLoadingArena)
 {
-  HRESULT Result;
-  
-  
-  // NOTE(MIGUEL): !!!! DONT FORGET TO READ D3D11 OUTPUT DEBUG MESSAGES
-  //                    ON FAILED ASSERTIONS FRIST!!!!!!!
-  
-  // NOTE(MIGUEL): MESH/MODEL STUFFFF
-  {
-    /// LINE
-    D3D11_BUFFER_DESC LineVDesc = { 0 };
-    LineVDesc.Usage = D3D11_USAGE_DYNAMIC;
-    LineVDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    LineVDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    LineVDesc.ByteWidth = sizeof(v3f) * 1049;
-    
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &LineVDesc,
-                                       NULL,
-                                       &Renderer->LineVBuffer);
-    
-    Assert(!FAILED(Result));
-    
-    D3D11_BUFFER_DESC LineVInstDesc = { 0 };
-    LineVInstDesc.Usage = D3D11_USAGE_DYNAMIC;
-    LineVInstDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    LineVInstDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    LineVInstDesc.ByteWidth = 256 * (2 * sizeof(v3f)); //for point a & b
-    
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &LineVInstDesc,
-                                       NULL,
-                                       &Renderer->LineVInstBuffer);
-    
-    Assert(!FAILED(Result));
-    
-    D3D11_BUFFER_DESC LineIDesc = { 0 };
-    LineIDesc.Usage = D3D11_USAGE_DYNAMIC;
-    LineIDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    LineIDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    LineIDesc.ByteWidth = 256 * sizeof(u16); //for point a & b
-    
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &LineIDesc,
-                                       NULL,
-                                       &Renderer->LineIBuffer);
-    
-    Assert(!FAILED(Result));
-    
-    /// TRIANGLE
-    D3D11_BUFFER_DESC TriangleVertDesc = { 0 };
-    TriangleVertDesc.Usage     = D3D11_USAGE_DEFAULT;
-    TriangleVertDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    TriangleVertDesc.ByteWidth = sizeof(vertex) * ArrayCount(TriangleMeshVerts);
-    
-    D3D11_SUBRESOURCE_DATA TriangleVertData = { 0 };
-    TriangleVertData.pSysMem = TriangleMeshVerts;
-    
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &TriangleVertDesc,
-                                       &TriangleVertData,
-                                       &Renderer->TriangleVBuffer );
-    Assert(!FAILED(Result));
-    
-    /// QUAD
-    D3D11_BUFFER_DESC QuadVertDesc = { 0 };
-    QuadVertDesc.Usage          = D3D11_USAGE_DYNAMIC;
-    QuadVertDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    QuadVertDesc.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
-    // NOTE(MIGUEL): As far as i can tell there is no reason why i cant make
-    //               this arbetrarely big stream in what ever i need.
-    QuadVertDesc.ByteWidth = 4095;
-    /*// NOTE(MIGUEL): This is not happening because is want to stuff the
-      //                 quad verts and the line verts(also quad but slightly different)
-//                 in the same buffer. ill push each using updatesubresource at a 
-//                 performance cost that the gpu cant just push it in and forget about it.
-//                 whatever thats why im not using subresource data to init and forget
-//                 and using dynamic usage.
-    D3D11_SUBRESOURCE_DATA QuadVertData = { 0 };
-    QuadVertData.pSysMem = 0;
-    */
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &QuadVertDesc,
-                                       0,
-                                       &Renderer->QuadVBuffer );
-    
-    D3D11_BUFFER_DESC QuadIndexDesc = { 0 };
-    QuadIndexDesc.Usage          = D3D11_USAGE_DYNAMIC;
-    QuadIndexDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    QuadIndexDesc.BindFlags      = D3D11_BIND_INDEX_BUFFER;
-    QuadIndexDesc.ByteWidth      = sizeof(QuadMeshIndices);
-    
-    D3D11_SUBRESOURCE_DATA QuadIndexData = { 0 };
-    QuadIndexData.pSysMem = QuadMeshIndices;
-    
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &QuadIndexDesc,
-                                       &QuadIndexData,
-                                       &Renderer->QuadIBuffer );
-    Assert(!FAILED(Result));
-    
-    /// TEXT SQUARE
-    
-    u32 TextSpriteSize = sizeof(vertex) * ArrayCount(TextSpriteMeshVerts);
-    u32 CharLimit      = 24;
-    
-    D3D11_BUFFER_DESC TextSpriteVertDesc = { 0 };
-    TextSpriteVertDesc.Usage          = D3D11_USAGE_DYNAMIC;
-    TextSpriteVertDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    TextSpriteVertDesc.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
-    TextSpriteVertDesc.ByteWidth      = TextSpriteSize * CharLimit;
-#if 0
-    D3D11_SUBRESOURCE_DATA TextSpriteVertData = { 0 };
-    TextSpriteVertData.pSysMem = nullptr;
-#endif
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &TextSpriteVertDesc,
-                                       0,
-                                       &Renderer->TextSpriteVBuffer );
-    Assert(!FAILED(Result));
-    
-    D3D11_BUFFER_DESC TextSpriteIndexDesc = { 0 };
-    TextSpriteIndexDesc.Usage          = D3D11_USAGE_DEFAULT;
-    TextSpriteIndexDesc.BindFlags      = D3D11_BIND_INDEX_BUFFER;
-    //TextSpriteIndexDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    TextSpriteIndexDesc.ByteWidth = sizeof(u16) * (6 * CharLimit);
-    
-    D3D11_SUBRESOURCE_DATA TextSpriteIndexData = { 0 };
-    TextSpriteIndexData.pSysMem = TextSpriteMeshIndices;
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &TextSpriteIndexDesc,
-                                       &TextSpriteIndexData,
-                                       &Renderer->TextSpriteIBuffer );
-    Assert(!FAILED(Result));
-  }
-  
+  /// LINE
+  D3D11VertexBuffer(Renderer->Device, &Renderer->LineVBuffer, NULL, sizeof(v3f),  1049, 
+                    Usage_Dynamic, Access_Write);
+  D3D11VertexBuffer(Renderer->Device, &Renderer->LineVInstBuffer, NULL, 2*sizeof(v3f),  256, 
+                    Usage_Dynamic, Access_Write);
+  D3D11IndexBuffer(Renderer->Device, &Renderer->LineIBuffer, NULL, 2*sizeof(u16),  256, 
+                   Usage_Dynamic, Access_Write);
+  /// TRIANGLE
+  D3D11VertexBuffer(Renderer->Device, &Renderer->TriangleVBuffer, TriangleMeshVerts, 
+                    2*sizeof(vertex),  ArrayCount(TriangleMeshVerts), Usage_Default, Access_None);
+  /// QUAD
+  D3D11VertexBuffer(Renderer->Device, &Renderer->QuadVBuffer , NULL, sizeof(u8), 4095, 
+                    Usage_Dynamic, Access_Write);
+  D3D11IndexBuffer(Renderer->Device, &Renderer->QuadIBuffer, QuadMeshIndices, sizeof(QuadMeshIndices),  1, 
+                   Usage_Dynamic, Access_Write);
+  /// TEXT SQUARE
+  u32 TextSpriteSize = sizeof(vertex) * ArrayCount(TextSpriteMeshVerts);
+  u32 CharLimit      = 24;
+  D3D11VertexBuffer(Renderer->Device, &Renderer->TextSpriteVBuffer, NULL, TextSpriteSize, CharLimit, 
+                    Usage_Dynamic, Access_Write);
+  D3D11IndexBuffer(Renderer->Device, &Renderer->TextSpriteIBuffer, QuadMeshIndices, 6*sizeof(u16),  CharLimit, 
+                   Usage_Default, Access_None);
+  //D3D11ConstantBuffer(ID3D11Device* Device, ID3D11Buffer **Buffer, void *Data,
+  //u32 Size, buffer_usage Usage, Access)
   
   // NOTE(MIGUEL): SETTING GPU CONSTANTS FOR RENDERING
-  {
-    // NOTE(MIGUEL): What is the difference between dynamic and default usage?
-    //               Why cant i use updatesubresource using dynamic and how do
-    //               i pass const buff data to the pipeline. 
-    // https://docs.microsoft.com/en-us/windows/win32/direct3d11/how-to--use-dynamic-resources
-    D3D11_BUFFER_DESC      GPUConstantsDesc     = { 0 };
-    D3D11_SUBRESOURCE_DATA GPUConstantsResource = { 0 };
-    
-    // NOTE(MIGUEL): This doesn't need to be pre intializeed because data
-    //               is guarenteed to be set every frame before the draw call.
-    GPUConstantsDesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
-    GPUConstantsDesc.Usage          = D3D11_USAGE_DYNAMIC;
-    GPUConstantsDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    GPUConstantsDesc.ByteWidth      = sizeof(gpu_const_high);
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &GPUConstantsDesc,
-                                       0,
-                                       &Renderer->CBHigh);
-    StaticAssert((sizeof(gpu_const_high)%16==0), D3D11_Const_buffer_not_a_multiple_of_16);
-    Assert(!FAILED(Result));
-    
-    GPUConstantsDesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
-    GPUConstantsDesc.Usage          = D3D11_USAGE_DYNAMIC;
-    GPUConstantsDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    GPUConstantsDesc.ByteWidth      = sizeof(gpu_const_low);
-    GPUConstantsResource.pSysMem = &Renderer->ConstBufferLow;
-    
-    Result = ID3D11Device_CreateBuffer(Renderer->Device, &GPUConstantsDesc,
-                                       &GPUConstantsResource,
-                                       &Renderer->CBLow);
-    Assert(!FAILED(Result));
-  }
+  StaticAssert((sizeof(gpu_const_high)%16==0), D3D11_Const_buffer_not_a_multiple_of_16);
+  StaticAssert((sizeof(gpu_const_low )%16==0), D3D11_Const_buffer_not_a_multiple_of_16);
+  D3D11ConstantBuffer(Renderer->Device, &Renderer->CBHigh, NULL,
+                      sizeof(gpu_const_high), Usage_Dynamic, Access_Write);
+  D3D11ConstantBuffer(Renderer->Device, &Renderer->CBLow, &Renderer->ConstBufferLow,
+                      sizeof(gpu_const_low), Usage_Dynamic, Access_Write);
   
   gVertexLayout[0].SemanticName         = "POSITION";
   gVertexLayout[0].SemanticIndex        = 0;
@@ -1161,44 +735,16 @@ void D3D11LoadResources(renderer *Renderer, arena *AssetLoadingArena)
   gVertexLayout[2].InputSlotClass       = D3D11_INPUT_PER_VERTEX_DATA;
   gVertexLayout[2].InstanceDataStepRate = 0;
   
-  WIN32_FIND_DATAA *CurrentShaderFileInfo = &Renderer->CurrentShaderFileInfo;
-  
-  memcpy(&Renderer->CurrentShaderPath,
-         "..\\src\\default.hlsl",
-         ArrayCount("..\\src\\default.hlsl"));
-  
-  char *ShaderPath = Renderer->CurrentShaderPath;
-  
-  
-  FindFirstFileA(ShaderPath,
-                 CurrentShaderFileInfo);
-  
-  HANDLE *ShaderCodeHandle = &Renderer->InUseShaderFileA;
-  
-  *ShaderCodeHandle = CreateFileA(ShaderPath,
-                                  GENERIC_READ, 0, 0,
-                                  OPEN_EXISTING,
-                                  FILE_ATTRIBUTE_NORMAL,
-                                  0);
-  
-  Assert(*ShaderCodeHandle);
-  
-  // NOTE(MIGUEL): Use an arena
-  
-  size_t ShaderFileSize = ((CurrentShaderFileInfo->nFileSizeHigh << 31) |
-                           (CurrentShaderFileInfo->nFileSizeLow));
-  
   ID3D11VertexShader *NewVertexShader;
   ID3D11PixelShader  *NewPixelShader;
+  Renderer->ShaderPath      = Str8("..\\src\\default.hlsl");
+  Renderer->ShaderLastWrite = OSFileLastWriteTime(Renderer->ShaderPath);
   Assert(LoadShader(Renderer,
+                    Renderer->ShaderPath,
                     &NewVertexShader,
                     &NewPixelShader,
                     &Renderer->InputLayout,
-                    gVertexLayout, gVertexLayoutCount,
-                    *ShaderCodeHandle,
-                    ShaderFileSize,
-                    AssetLoadingArena));
-  
+                    gVertexLayout, gVertexLayoutCount));
   Renderer->VertexShader = NewVertexShader;
   Renderer->PixelShader  = NewPixelShader;
   
@@ -1231,43 +777,16 @@ void D3D11LoadResources(renderer *Renderer, arena *AssetLoadingArena)
   gLineVLayout[2].InputSlotClass       = D3D11_INPUT_PER_INSTANCE_DATA;
   gLineVLayout[2].InstanceDataStepRate = 1;
   
-  
-  WIN32_FIND_DATAA *LineShaderFileInfo = &Renderer->LineShaderFileInfo;
-  
-  memcpy(&Renderer->LineShaderPath,
-         "..\\src\\lines.hlsl",
-         ArrayCount("..\\src\\lines.hlsl"));
-  
-  char *LineShaderPath = Renderer->LineShaderPath;
-  
-  
-  FindFirstFileA(LineShaderPath,
-                 LineShaderFileInfo);
-  
-  HANDLE *LineShaderCodeHandle = &Renderer->InUseLineShaderFileA;
-  
-  *LineShaderCodeHandle = CreateFileA(LineShaderPath,
-                                      GENERIC_READ, 0, 0,
-                                      OPEN_EXISTING,
-                                      FILE_ATTRIBUTE_NORMAL,
-                                      0);
-  
-  Assert(*LineShaderCodeHandle);
-  
-  size_t LineShaderFileSize = ((LineShaderFileInfo->nFileSizeHigh << 31) |
-                               (LineShaderFileInfo->nFileSizeLow));
-  
   ID3D11VertexShader *NewLineVShader;
   ID3D11PixelShader  *NewLinePShader;
+  Renderer->LineShaderPath  = Str8("..\\src\\lines.hlsl");
+  Renderer->LineShaderLastWrite = OSFileLastWriteTime(Renderer->LineShaderPath);
   Assert(LoadShader(Renderer,
+                    Renderer->LineShaderPath,
                     &NewLineVShader,
                     &NewLinePShader,
                     &Renderer->LineInputLayout,
-                    gLineVLayout, gLineVLayoutCount,
-                    *LineShaderCodeHandle,
-                    LineShaderFileSize,
-                    AssetLoadingArena));
-  
+                    gLineVLayout, gLineVLayoutCount));
   Renderer->LineVShader = NewLineVShader;
   Renderer->LinePShader = NewLinePShader;
   
@@ -1298,219 +817,29 @@ void D3D11LoadResources(renderer *Renderer, arena *AssetLoadingArena)
 }
 
 void D3D11HotLoadShader(renderer *Renderer,
+                        str8 Path,
+                        datetime *LastRecordedWrite,
+                        ID3D11VertexShader **VertexShader,
+                        ID3D11PixelShader  **PixelShader,
                         ID3D11InputLayout  **InputLayout,
                         D3D11_INPUT_ELEMENT_DESC *ElemDesc,
                         u32 ElemDescCount,
                         arena *ShaderLoadingArena)
 {
-  WIN32_FIND_DATAA *CurrentShaderFileInfo = &Renderer->CurrentShaderFileInfo;
-  WIN32_FIND_DATAA  UpdatedShaderFileInfo = {0};
-  
-  //char *CurrentShaderPath = Renderer->CurrentShaderPath;
-  FindFirstFileA("..\\src\\default.hlsl",
-                 &UpdatedShaderFileInfo);
-  
-  
-  if((UpdatedShaderFileInfo.ftLastWriteTime.dwLowDateTime !=
-      CurrentShaderFileInfo->ftLastWriteTime.dwLowDateTime) ||
-     (UpdatedShaderFileInfo.ftLastWriteTime.dwHighDateTime !=
-      CurrentShaderFileInfo->ftLastWriteTime.dwHighDateTime)) 
+  datetime LastWrite = OSFileLastWriteTime(Path);
+  if(IsEqual(LastWrite, *LastRecordedWrite, datetime)) return;
+  ID3D11VertexShader *NewVertexShader;
+  ID3D11PixelShader  *NewPixelShader;
+  if(LoadShader(&g_Renderer, Path,
+                &NewVertexShader, &NewPixelShader, InputLayout,
+                ElemDesc, ElemDescCount))
   {
-    
-    ID3D11VertexShader *NewVertexShader = NULL;
-    ID3D11PixelShader  *NewPixelShader  = NULL;
-    
-    if(Renderer->InUseShaderFileA)
-    {
-      
-      char PostFix[] = "_inuse_b.hlsl";
-      
-      CopyFile("..\\src\\default.hlsl",
-               "..\\src\\default""_inuse_b"".hlsl", 0);
-      
-      
-      size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 31) |
-                               (UpdatedShaderFileInfo.nFileSizeLow));
-      
-      Renderer->InUseShaderFileB = CreateFileA("..\\src\\default""_inuse_b"".hlsl",
-                                               GENERIC_READ, 0, 0,
-                                               OPEN_EXISTING,
-                                               FILE_FLAG_DELETE_ON_CLOSE,
-                                               0);
-      
-      if(LoadShader(&g_Renderer,
-                    &NewVertexShader,
-                    &NewPixelShader,
-                    InputLayout,
-                    ElemDesc, ElemDescCount,
-                    Renderer->InUseShaderFileB,
-                    ShaderFileSize,
-                    ShaderLoadingArena))
-      {
-        ID3D11VertexShader_Release(Renderer->VertexShader);
-        ID3D11PixelShader_Release(Renderer->PixelShader);
-        
-        Renderer->VertexShader = NewVertexShader;
-        Renderer->PixelShader  = NewPixelShader;
-        
-      }
-      
-      CloseHandle(Renderer->InUseShaderFileA);
-      Renderer->InUseShaderFileA = 0;
-      
-      CurrentShaderFileInfo->ftLastWriteTime =
-        UpdatedShaderFileInfo.ftLastWriteTime;
-    }
-    else if(Renderer->InUseShaderFileB)
-    {
-      
-      CopyFile("..\\src\\default"".hlsl",
-               "..\\src\\default""_inuse_a"".hlsl", 0);
-      
-      
-      size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 31) |
-                               (UpdatedShaderFileInfo.nFileSizeLow));
-      
-      Renderer->InUseShaderFileA = CreateFileA("..\\src\\default""_inuse_a"".hlsl",
-                                               GENERIC_READ, 0, 0,
-                                               OPEN_EXISTING,
-                                               FILE_FLAG_DELETE_ON_CLOSE,
-                                               0);
-      
-      if(LoadShader(&g_Renderer,
-                    &NewVertexShader,
-                    &NewPixelShader,
-                    InputLayout,
-                    ElemDesc, ElemDescCount,
-                    Renderer->InUseShaderFileA,
-                    ShaderFileSize,
-                    ShaderLoadingArena))
-      {
-        
-        ID3D11VertexShader_Release(Renderer->VertexShader);
-        ID3D11PixelShader_Release(Renderer->PixelShader);
-        Renderer->VertexShader = NewVertexShader;
-        Renderer->PixelShader  = NewPixelShader;
-        
-      }
-      
-      CloseHandle(Renderer->InUseShaderFileB);
-      Renderer->InUseShaderFileB = 0;
-      
-      CurrentShaderFileInfo->ftLastWriteTime = 
-        UpdatedShaderFileInfo.ftLastWriteTime;
-    }
+    ID3D11VertexShader_Release(*VertexShader);
+    ID3D11PixelShader_Release (*PixelShader);
+    *VertexShader = NewVertexShader;
+    *PixelShader  = NewPixelShader;
+    *LastRecordedWrite = LastWrite;
   }
-  
-  return;
-}
-
-void D3D11HotLoadShaderLines(renderer *Renderer,
-                             ID3D11InputLayout  **InputLayout,
-                             D3D11_INPUT_ELEMENT_DESC *ElemDesc,
-                             u32 ElemDescCount,
-                             arena *ShaderLoadingArena)
-{
-  WIN32_FIND_DATAA *CurrentShaderFileInfo = &Renderer->CurrentShaderFileInfo;
-  WIN32_FIND_DATAA  UpdatedShaderFileInfo = {0};
-  
-  //char *CurrentShaderPath = Renderer->CurrentShaderPath;
-  FindFirstFileA("..\\src\\lines.hlsl",
-                 &UpdatedShaderFileInfo);
-  
-  
-  if((UpdatedShaderFileInfo.ftLastWriteTime.dwLowDateTime !=
-      CurrentShaderFileInfo->ftLastWriteTime.dwLowDateTime) ||
-     (UpdatedShaderFileInfo.ftLastWriteTime.dwHighDateTime !=
-      CurrentShaderFileInfo->ftLastWriteTime.dwHighDateTime)) 
-  {
-    
-    ID3D11VertexShader *NewVertexShader = NULL;
-    ID3D11PixelShader  *NewPixelShader  = NULL;
-    
-    if(Renderer->InUseShaderFileA)
-    {
-      
-      char PostFix[] = "_inuse_b.hlsl";
-      
-      CopyFile("..\\src\\lines.hlsl",
-               "..\\src\\lines""_inuse_b"".hlsl", 0);
-      
-      
-      size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 31) |
-                               (UpdatedShaderFileInfo.nFileSizeLow));
-      
-      Renderer->InUseShaderFileB = CreateFileA("..\\src\\lines""_inuse_b"".hlsl",
-                                               GENERIC_READ, 0, 0,
-                                               OPEN_EXISTING,
-                                               FILE_FLAG_DELETE_ON_CLOSE,
-                                               0);
-      
-      if(LoadShader(&g_Renderer,
-                    &NewVertexShader,
-                    &NewPixelShader,
-                    InputLayout,
-                    ElemDesc, ElemDescCount,
-                    Renderer->InUseShaderFileB,
-                    ShaderFileSize,
-                    ShaderLoadingArena))
-      {
-        ID3D11VertexShader_Release(Renderer->LineVShader);
-        ID3D11PixelShader_Release(Renderer->LinePShader);
-        Renderer->LineVShader = NewVertexShader;
-        Renderer->LinePShader  = NewPixelShader;
-        
-      }
-      
-      CloseHandle(Renderer->InUseShaderFileA);
-      Renderer->InUseShaderFileA = 0;
-      
-      CurrentShaderFileInfo->ftLastWriteTime =
-        UpdatedShaderFileInfo.ftLastWriteTime;
-    }
-    else if(Renderer->InUseShaderFileB)
-    {
-      
-      CopyFile("..\\src\\lines"".hlsl",
-               "..\\src\\lines""_inuse_a"".hlsl", 0);
-      
-      
-      size_t ShaderFileSize = ((UpdatedShaderFileInfo.nFileSizeHigh << 31) |
-                               (UpdatedShaderFileInfo.nFileSizeLow));
-      
-      Renderer->InUseShaderFileA = CreateFileA("..\\src\\lines""_inuse_a"".hlsl",
-                                               GENERIC_READ, 0, 0,
-                                               OPEN_EXISTING,
-                                               FILE_FLAG_DELETE_ON_CLOSE,
-                                               0);
-      
-      if(LoadShader(&g_Renderer,
-                    &NewVertexShader,
-                    &NewPixelShader,
-                    InputLayout,
-                    ElemDesc, ElemDescCount,
-                    Renderer->InUseShaderFileA,
-                    ShaderFileSize,
-                    ShaderLoadingArena))
-      {
-        
-        ID3D11VertexShader_Release(Renderer->LineVShader);
-        ID3D11PixelShader_Release(Renderer->LinePShader);
-        
-        
-        Renderer->LineVShader = NewVertexShader;
-        Renderer->LinePShader  = NewPixelShader;
-        
-      }
-      
-      CloseHandle(Renderer->InUseShaderFileB);
-      Renderer->InUseShaderFileB = 0;
-      
-      CurrentShaderFileInfo->ftLastWriteTime = 
-        UpdatedShaderFileInfo.ftLastWriteTime;
-    }
-  }
-  
   return;
 }
 
@@ -1570,23 +899,29 @@ void PhysicsSim(void)
       QueryPerformanceCounter((LARGE_INTEGER *)&WorkStartTick);
       arena ShaderLoadingArena = ArenaInit(NULL, gState->TransientSize, gState->Transient);;
       D3D11HotLoadShader(&g_Renderer,
+                         g_Renderer.ShaderPath,
+                         &g_Renderer.ShaderLastWrite,
+                         &g_Renderer.VertexShader,
+                         &g_Renderer.PixelShader,
                          &g_Renderer.InputLayout,
                          gVertexLayout,
                          gVertexLayoutCount,
                          &ShaderLoadingArena);
-      D3D11HotLoadShaderLines(&g_Renderer,
-                              &g_Renderer.LineInputLayout,
-                              gLineVLayout,
-                              gLineVLayoutCount,
-                              &ShaderLoadingArena);
+      D3D11HotLoadShader(&g_Renderer,
+                         g_Renderer.LineShaderPath,
+                         &g_Renderer.LineShaderLastWrite,
+                         &g_Renderer.LineVShader,
+                         &g_Renderer.LinePShader,
+                         &g_Renderer.LineInputLayout,
+                         gLineVLayout,
+                         gLineVLayoutCount,
+                         &ShaderLoadingArena);
       datetime NewWriteTime = OSFileLastWriteTime(ModulePathSim);
       {
         if(!IsEqual(NewWriteTime, SimCode.LastWrite, datetime))
         {
           HotUnloadPlugin(&SimCode);
-          SimCode = HotLoadPlugin(ModulePathSim,
-                                  ModulePathSimTemp,
-                                  ModulePathSimLock);
+          SimCode = HotLoadPlugin(ModulePathSim, ModulePathSimTemp, ModulePathSimLock);
         }
       }
       
@@ -1639,9 +974,11 @@ void WinMainCRTStartup(void)
 {
   OSStateInit(&gState);
   OSWindowCreate();
-  Assert(D3D11Startup((HWND)gState->Window, &g_Renderer));
+  OSGraphicsInit(&g_Renderer, gState->WindowDim, (HWND)gState->Window);
+  
   PhysicsSim();
-  D3D11Release(&g_Renderer);
+  
+  OSGraphicsCleanup(&g_Renderer);
   OSProcessKill();
   return;
 }
