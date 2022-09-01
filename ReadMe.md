@@ -5,6 +5,8 @@ of linear algebra and physics.
 
 ![](https://github.com/MiguelAmaro/physics-sim/blob/main/gifs/preview.gif?raw=true)
 
+![](https://github.com/MiguelAmaro/physics-sim/blob/main/gifs/boids.gif?raw=true)
+
 ## Features
 - [ ] Wavefront OBJ file parsing
 - [ ] Immediate mode UI

@@ -106,6 +106,7 @@ m2f: Identitym2f, \
 m3f: Identitym3f,  \
 m4f: Identitym4f)((a))
 #endif
+
 v2f Scalev2f(v2f a, f32 b)
 {
   v2f Result = {a.x*b, a.y*b};
@@ -355,14 +356,17 @@ m4f Multm4f(m4f a, m4f b)
 {
   m4f Result = { 0 };
 #if 0
+  /// NOTE(MIGUEL): Broken
   for(u32 BColumn = 0; BColumn < 4; BColumn ++)
   {
     for(u32 ARow = 0; ARow < 4; ARow++)
     {
-      v4f Entry = &Result.r[BColumn];
-      Entrya
-        for(u32 ScanElement = 0; ScanElement < 4; ScanElement++)
-      { *Entry += a.r[ScanRow].c[ScanElement] * b.r[ScanElement].c[ScanCol]; }
+      v4f *Entry = &Result.r[BColumn];
+      //Entrya
+      for(u32 ScanElement = 0; ScanElement < 4; ScanElement++)
+      { 
+        Entry->e[ScanElement] += a.r[ARow].e[ScanElement] * b.r[ScanElement].e[BColumn];
+      }
     }
   }
 #else
@@ -543,10 +547,9 @@ u32 BGRAPack4x8(v4f Data)
 i2f I2fCenteredDim(v2f Dim)
 {
   i2f Result = { 0 };
-  Result.min.x = -1.0f * Dim.x / 2.0f;
-  Result.min.y = -1.0f * Dim.y / 2.0f;
-  Result.max.x = Dim.x / 2.0f;
-  Result.max.y = Dim.y / 2.0f;
+  v2f HalfDim = Scale(Dim, 0.5f);
+  Result.min  = Scale(HalfDim, -1.0f);
+  Result.max  = HalfDim;
   return Result;
 }
 b32 I2fIsInside(i2f Bounds, v2f Pos)

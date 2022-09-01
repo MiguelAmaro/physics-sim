@@ -75,8 +75,7 @@ fn str8 BuildExePathFileName(os_state *State, char *FileName, arena *Arena)
 fn plugin HotLoadPlugin(str8 SourceDLLName, str8 TempDLLName, str8 LockedFileName)
 {
   plugin Result = { 0 };
-  WIN32_FILE_ATTRIBUTE_DATA Ignored;
-  if(!GetFileAttributesEx((const char *)LockedFileName.Data, GetFileExInfoStandard, &Ignored))
+  if(OSFileExists(LockedFileName))
   {
     Result.LastWrite = OSFileLastWriteTime(SourceDLLName);
     CopyFile((const char *)SourceDLLName.Data,
@@ -890,10 +889,10 @@ void PhysicsSim(void)
   while (g_Running)
   {
     // NOTE(MIGUEL): Start Timer
-    AppState->WindowDim = V2f((f32)gState->WindowDim.x, (f32)gState->WindowDim.y);
     
     OSEventsConsume(&Events);
     OSWindowGetNewSize();
+    AppState->WindowDim = V2f((f32)gState->WindowDim.x, (f32)gState->WindowDim.y);
     if(!gPause || gFrameStep)
     {
       QueryPerformanceCounter((LARGE_INTEGER *)&WorkStartTick);

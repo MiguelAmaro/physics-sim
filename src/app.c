@@ -52,7 +52,7 @@ void CreateMovableGroup(app_state *AppState )
   
   f32 TurnFraction= Golden32;
   //u32 Resolution = 1;
-  f32 NumPoints = 10;
+  f32 NumPoints = 100;
   f32 Radius = 10.0f;
   for(u32 Index=0; Index<(u32)NumPoints; Index++)
   {
@@ -125,7 +125,7 @@ static void SimInit(app_state *AppState)
 {
   AppState->MeterToPixels = 20.0f;
   // NOTE(MIGUEL): Sim Initialization
-  AppState->EntityCount    =   10;
+  AppState->EntityCount    =   100;
   AppState->EntityMaxCount = 256;
   
   // NOTE(MIGUEL): Entity Generation
@@ -566,7 +566,7 @@ v3f WorldToroidalPos(i2f World, v3f Pos)
   //x and z may need to be changed to x and z
   v3f Result = {0};
   if     (Pos.x < World.minx) Result.x = World.maxx;
-  else if(Pos.x > World.maxx) Result.y = World.minx;
+  else if(Pos.x > World.maxx) Result.x = World.minx;
   else   Result.x = Pos.x;
   if     (Pos.y < World.miny) Result.y = World.maxy;
   else if(Pos.y > World.maxy) Result.y = World.miny;
@@ -585,7 +585,8 @@ v3f FlockAlign(entity *Boid, entity *Flock, u32 FlockMateCount)
     if(!((FlockMate->Exists == 1) && (FlockMate->Type == Entity_Moves))) continue;
     
     f32 Dist = Distance(Boid->Pos, FlockMate->Pos);
-    if((Dist < 10.0f) && !IsEqual(&FlockMate, &Boid, Ref(entity)))
+    //&& !IsEqual(&FlockMate, &Boid, Ref(entity))
+    if((Dist < 4.0f))
     {
       AvgVel = Add(AvgVel, FlockMate->Vel);
       NeighborCount++;
@@ -673,7 +674,7 @@ APIPROC SIM_UPDATE(Update)
     if(Entity->Type == Entity_Moves && Entity->Exists)
     {
       
-      f32 MaxSpeed = 10.1f;
+      f32 MaxSpeed = 50.0f;
       v3f Acc   = Entity->Acc;
       v3f Vel   = Entity->Vel;
       
@@ -681,16 +682,16 @@ APIPROC SIM_UPDATE(Update)
       v3f Alignment = FlockAlign(Entity, AppState->Entities, AppState->EntityCount);
       // CALC POS DELTA
       v3f WorldSpace = Scale(V3f(AppState->WindowDim.x, AppState->WindowDim.y, 0.0f), 1.0f/AppState->MeterToPixels);
-      v3f PosDelta =  Add(Scale(Acc, 0.5f * Sqr((f32)AppState->DeltaTimeMS)),
-                          Scale(Scale(Vel, MaxSpeed), (f32)AppState->DeltaTimeMS));
+      v3f PosDelta =  Add(Scale(Acc, 0.5f * Sqr((f32)AppState->DeltaTimeMS/1000.0f)),
+                          Scale(Scale(Vel, MaxSpeed), (f32)AppState->DeltaTimeMS/1000.0f));
       //PosDelta = (Length(PosDelta) > WorldSpace.y)?Scale(Normalize(PosDelta), WorldSpace.y):PosDelta;
-      Entity->Vel = Normalize(Add(Scale(Acc,(f32)AppState->DeltaTimeMS), Entity->Vel));
-      //Entity->Acc = Normalize(Alignment);
+      Entity->Vel = Normalize(Add(Scale(Acc,(f32)AppState->DeltaTimeMS/1000.0f), Entity->Vel));
+      Entity->Acc = Normalize(Add(Scale(Alignment, 4.0), Entity->Acc));
       //APPLY MOVE
-      i2f Viewport = I2fCenteredDim(WorldSpace.xy);
-      //v3f NewPos   = Add(Entity->Pos, PosDelta);
-      //Entity->Pos  = WorldToroidalPos(Viewport, NewPos);
-      Entity->Pos  = Add(Entity->Pos, PosDelta);
+      i2f Viewport = I2fCenteredDim(Scale(WorldSpace.xy, 0.5f));
+      v3f NewPos   = Add(Entity->Pos, PosDelta);
+      Entity->Pos  = WorldToroidalPos(Viewport, NewPos);
+      //Entity->Pos  = Add(Entity->Pos, PosDelta);
     }
   }
   
@@ -757,22 +758,22 @@ APIPROC SIM_UPDATE(Update)
   //~END UI USAGE CODE
   
   //END_TIMED_BLOCK(Update);
-#if 0
-  str8 EntityCountLabel = Str8FormatFromArena(TextArena, "Entity Count: %d\n",
+#if 1
+  str8 EntityCountLabel = Str8FromArenaFormat(TextArena, "Entity Count: %d\n",
                                               AppState->EntityCount-AppState->DeadEntityCount);
-  DrawSomeText(RenderBuffer, EntityCountLabel, 20.f, V3f(10.f, 760.0f, 0.5f));
-  str8 UpdateCycleLabel = Str8FormatFromArena(TextArena, "Update Cycle Count: %I64d cycles | Hits: %d hits\n",
+  DrawSomeText(RenderBuffer, EntityCountLabel, 20, V3f(10.f, 760.0f, 0.5f), V4f(0.0f,1.0f,0.0f,1.0f));
+  str8 UpdateCycleLabel = Str8FromArenaFormat(TextArena, "Update Cycle Count: %I64d cycles | Hits: %d hits\n",
                                               AppState->Counter[DBG_CycleCounter_Update].CycleCount,
                                               AppState->Counter[DBG_CycleCounter_Update].HitCount);
-  DrawSomeText(Render Buffer, UpdateCycleLabel, 20.f, V3f(10.f, 700.0f, 0.5f));
-  str8 RendererCycleLabel = Str8FormatFromArena(TextArena, "Renderer Cycle Count: %I64d cycles | Hits: %d hits\n",
+  DrawSomeText(RenderBuffer, UpdateCycleLabel, 20, V3f(10.f, 700.0f, 0.5f), V4f(0.0f,1.0f,0.0f,1.0f));
+  str8 RendererCycleLabel = Str8FromArenaFormat(TextArena, "Renderer Cycle Count: %I64d cycles | Hits: %d hits\n",
                                                 AppState->Counter[DBG_CycleCounter_Render].CycleCount,
                                                 AppState->Counter[DBG_CycleCounter_Render].HitCount);
   AppState->Counter[DBG_CycleCounter_Update].CycleCount = 0;
   AppState->Counter[DBG_CycleCounter_Update].HitCount = 0;
   AppState->Counter[DBG_CycleCounter_Render].CycleCount = 0;
   AppState->Counter[DBG_CycleCounter_Render].HitCount = 0;
-  DrawSomeText(RenderBuffer, RendererCycleLabel, 20.f, V3f(10.f, 640.0f, 0.5f));
+  DrawSomeText(RenderBuffer, RendererCycleLabel, 20, V3f(10.f, 640.0f, 0.5f), V4f(0.0f,1.0f,0.0f,1.0f));
 #endif
   return;
 }

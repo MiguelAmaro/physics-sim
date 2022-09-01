@@ -61,9 +61,9 @@ fn b32 OSFileExists(str8 FileName)
 {
   // NOTE(MIGUEL): Can also get file attributes
   WIN32_FILE_ATTRIBUTE_DATA Ignored;
-  b32 Result = GetFileAttributesEx((LPCSTR)FileName.Data,
-                                   GetFileExInfoStandard,
-                                   &Ignored);
+  b32 Result = (0 == GetFileAttributesEx((LPCSTR)FileName.Data,
+                                         GetFileExInfoStandard,
+                                         &Ignored));
   return Result;
 }
 fn datetime OSFileLastWriteTime(str8 FileName)
